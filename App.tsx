@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef } from 'react';
 import ControlPanel from './components/ControlPanel';
 import PreviewCanvas from './components/PreviewCanvas';
@@ -148,7 +149,7 @@ function App() {
           imageLoaded={!!originalImage}
         />
 
-        <div className="flex-1 min-w-0 flex flex-col h-[calc(100vh-140px)] sticky top-[100px]">
+        <div className="flex-1 min-w-0 flex flex-col h-[60vh] lg:h-[calc(100vh-140px)] lg:sticky lg:top-[100px]">
             <div className="flex-1 bg-neutral-800/30 border border-neutral-700/50 rounded-2xl p-2 overflow-hidden relative shadow-2xl backdrop-blur-sm">
                 <PreviewCanvas 
                   originalImage={originalImage} 
@@ -157,7 +158,7 @@ function App() {
                 />
                 
                 {/* Floating Canvas Meta Info */}
-                <div className="absolute top-6 left-6 flex gap-2">
+                <div className="absolute top-6 left-6 flex gap-2 pointer-events-none">
                     <div className="bg-neutral-900/90 backdrop-blur border border-neutral-700 text-neutral-300 text-xs px-3 py-1.5 rounded-full font-medium shadow-xl">
                         A3 Portrait (297 x 420mm)
                     </div>

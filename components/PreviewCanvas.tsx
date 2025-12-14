@@ -3,7 +3,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { AppSettings, MaskGrid } from '../types';
 import { A3_WIDTH, A3_HEIGHT } from '../constants';
 import { postProcessMask, smoothMask, extractAllContours, buildBezierPath } from '../utils/processing';
-import { ZoomIn, ZoomOut, Maximize, RotateCcw } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize } from 'lucide-react';
 
 interface PreviewCanvasProps {
   originalImage: HTMLImageElement | null;
@@ -20,20 +20,52 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
   const [vectorPaths, setVectorPaths] = useState<Path2D[]>([]);
   const [previewMask, setPreviewMask] = useState<ImageData | null>(null);
 
-  // Viewport State (Pan/Zoom)
+  // Viewport State
   const [transform, setTransform] = useState({ k: 0.8, x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const lastPos = useRef<{ x: number, y: number } | null>(null);
-  
-  // Touch State
-  const lastTouchDistance = useRef<number | null>(null);
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
 
-  // Constants for A3 physical size mapping (approximate for 72DPI standard)
-  // A3 Width = 297mm. Constants A3_WIDTH = 842px.
-  // 1mm = 2.835px. 0.1mm = ~0.28px.
-  const LINE_WIDTH = 0.2835; 
+  // Touch/Interaction Refs
+  const isDragging = useRef(false);
+  const lastMousePos = useRef<{ x: number, y: number } | null>(null);
+  const touchState = useRef({
+    dist: 0, // Distance between fingers
+    kStart: 1, // Zoom level at start of pinch
+    xStart: 0,
+    yStart: 0,
+  });
 
-  // --- 1. PROCESSING PIPELINE ---
+  // Constants
+  const LINE_WIDTH = 0.2835; // 0.1mm in pixels
+
+  // --- 1. RESIZE OBSERVER (Fixes iOS Canvas Flicker) ---
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateSize = () => {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      // Rounding prevents sub-pixel blurring
+      const w = Math.floor(rect.width * dpr);
+      const h = Math.floor(rect.height * dpr);
+      
+      // Only update if dimensions actually changed
+      if (canvasRef.current && (canvasRef.current.width !== w || canvasRef.current.height !== h)) {
+          canvasRef.current.width = w;
+          canvasRef.current.height = h;
+          setCanvasSize({ w: rect.width, h: rect.height }); // Store CSS size
+      }
+    };
+
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(container);
+    updateSize(); // Initial
+
+    return () => observer.disconnect();
+  }, []);
+
+
+  // --- 2. PROCESSING PIPELINE ---
   useEffect(() => {
     let active = true;
 
@@ -44,12 +76,10 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       // Yield to UI thread
       await new Promise(resolve => setTimeout(resolve, 10));
 
-      // Offscreen processing
       const internalScale = settings.scale / 100;
       const internalW = Math.max(20, Math.round(A3_WIDTH * internalScale));
       const internalH = Math.max(20, Math.round(A3_HEIGHT * internalScale));
       
-      // 1. Draw and Downsample
       const tempCanvas = document.createElement('canvas');
       tempCanvas.width = internalW;
       tempCanvas.height = internalH;
@@ -61,7 +91,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       const drawW = originalImage.width * scaleToA3;
       const drawH = originalImage.height * scaleToA3;
       
-      // We need an intermediate canvas for the A3 scaling before downsampling
       const a3Canvas = document.createElement('canvas');
       a3Canvas.width = A3_WIDTH;
       a3Canvas.height = A3_HEIGHT;
@@ -74,7 +103,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       
       tctx.drawImage(a3Canvas, 0, 0, internalW, internalH);
       
-      // 2. Thresholding
       const imgData = tctx.getImageData(0, 0, internalW, internalH);
       const data = imgData.data;
       const thresh = settings.threshold;
@@ -89,7 +117,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         }
       }
 
-      // 3. Morphological Operations
       postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth);
       
       let smoothIter = settings.smooth;
@@ -99,16 +126,14 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
 
       if (!active) return;
 
-      // 4. Prepare Outputs
       onMaskReady(bwMask);
 
-      // A) Raster Preview (Bitmap)
-      // Convert mask back to ImageData for rendering when not in Bezier mode
+      // A) Raster Preview
       const previewData = new ImageData(internalW, internalH);
       for (let y = 0; y < internalH; y++) {
         for (let x = 0; x < internalW; x++) {
           const idx = (y * internalW + x) * 4;
-          const val = bwMask[y][x] ? 0 : 255; // Black or White
+          const val = bwMask[y][x] ? 0 : 255;
           previewData.data[idx] = val;
           previewData.data[idx+1] = val;
           previewData.data[idx+2] = val;
@@ -117,14 +142,12 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       }
       setPreviewMask(previewData);
 
-      // B) Vector Preview (Paths)
-      // Extract high-quality vectors
+      // B) Vector Preview
       const contours = extractAllContours(bwMask, internalW, internalH);
       const paths: Path2D[] = [];
-      const smoothing = Math.max(settings.vectorSmoothing, 0.5); // Minimal smoothing for visual crispness
+      const smoothing = Math.max(settings.vectorSmoothing, 0.5);
       
       contours.forEach(contour => {
-        // Use high point count for preview to look sharp
         const pathString = buildBezierPath(contour, 3000, smoothing);
         if (pathString) {
           paths.push(new Path2D(pathString));
@@ -139,43 +162,26 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
   }, [originalImage, settings, onMaskReady]);
 
 
-  // --- 2. RENDERING LOOP ---
+  // --- 3. RENDERING LOOP ---
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-
-    // Match canvas pixel size to display size (DPI aware)
-    const dpr = window.devicePixelRatio || 1;
-    const rect = container.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    if (!canvas || canvasSize.w === 0) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Reset transform to identity then apply our view transform
+    const dpr = window.devicePixelRatio || 1;
+
+    // Clear and Setup
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.clearRect(0, 0, canvasSize.w, canvasSize.h);
 
-    // Grid Background (for "Blueprint" feel)
-    const gridSize = 20 * transform.k;
-    if (gridSize > 10) {
-        ctx.beginPath();
-        ctx.strokeStyle = '#222';
-        ctx.lineWidth = 1;
-        // Simple grid drawing logic could go here
-    }
-
-    // Apply Pan/Zoom
+    // Apply Transform
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
 
-    // Center the A3 Paper in the view if not panned
-    // (We rely on transform.x/y for positioning)
-    
-    // Draw Paper Shadow
+    // Shadow & Paper
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = 20;
     ctx.shadowOffsetX = 0;
@@ -184,93 +190,164 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
     ctx.fillRect(0, 0, A3_WIDTH, A3_HEIGHT);
     ctx.shadowColor = 'transparent';
 
-    // Draw Content
     if (!originalImage) {
-       ctx.fillStyle = '#eee';
+       ctx.fillStyle = '#ccc';
        ctx.font = '30px sans-serif';
        ctx.textAlign = 'center';
        ctx.fillText("No Image", A3_WIDTH/2, A3_HEIGHT/2);
        return;
     }
 
-    // Mode A: Raster Bitmap
     if (!settings.bezierMode && previewMask) {
-        // To draw the ImageData scaled up to A3 size, we need a temp canvas
-        // This is efficient enough for 60fps pan/zoom usually
+        // Raster Mode
         const temp = document.createElement('canvas');
         temp.width = previewMask.width;
         temp.height = previewMask.height;
         temp.getContext('2d')?.putImageData(previewMask, 0, 0);
-        
-        ctx.imageSmoothingEnabled = false; // Pixel art look for stencil check
+        ctx.imageSmoothingEnabled = false; 
         ctx.drawImage(temp, 0, 0, A3_WIDTH, A3_HEIGHT);
     } 
-    // Mode B: Vector Paths
     else if (settings.bezierMode) {
-        // Draw image faintly behind? Optional. 
-        // Let's keep it clean white paper for contrast.
-        
+        // Vector Mode
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        
-        // Use a consistent physical width: 0.1mm (~0.28px)
-        // When zoomed in, this line will appear thicker on screen (correct for CAD)
         ctx.lineWidth = LINE_WIDTH; 
-        ctx.strokeStyle = '#ff0000'; // Cut line color
+        ctx.strokeStyle = '#ff0000';
         
         vectorPaths.forEach(path => {
             ctx.stroke(path);
         });
     }
 
-  }, [originalImage, previewMask, vectorPaths, transform, settings.bezierMode]);
+  }, [originalImage, previewMask, vectorPaths, transform, settings.bezierMode, canvasSize]);
 
   useEffect(() => {
     requestAnimationFrame(draw);
   }, [draw]);
 
-  // --- 3. CONTROLS LOGIC ---
+
+  // --- 4. INPUT HANDLERS (Mouse & Touch) ---
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // prevent browser zoom
     const zoomIntensity = 0.1;
     const direction = e.deltaY > 0 ? -1 : 1;
     const factor = 1 + (direction * zoomIntensity);
     
-    // Calculate new scale
     let newK = transform.k * factor;
-    newK = Math.max(0.1, Math.min(newK, 20)); // Clamp zoom
+    newK = Math.max(0.1, Math.min(newK, 20));
 
-    // Zoom towards mouse pointer
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // (mouseX - x) / k = (mouseX - newX) / newK
     const newX = mouseX - (mouseX - transform.x) * (newK / transform.k);
     const newY = mouseY - (mouseY - transform.y) * (newK / transform.k);
 
     setTransform({ k: newK, x: newX, y: newY });
   };
 
+  // Mouse Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    lastPos.current = { x: e.clientX, y: e.clientY };
+    isDragging.current = true;
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !lastPos.current) return;
-    const dx = e.clientX - lastPos.current.x;
-    const dy = e.clientY - lastPos.current.y;
+    if (!isDragging.current || !lastMousePos.current) return;
+    const dx = e.clientX - lastMousePos.current.x;
+    const dy = e.clientY - lastMousePos.current.y;
     setTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
-    lastPos.current = { x: e.clientX, y: e.clientY };
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
-    lastPos.current = null;
+    isDragging.current = false;
+    lastMousePos.current = null;
   };
+
+  // Touch Handlers (Pinch & Pan)
+  const getTouchDist = (t1: React.Touch, t2: React.Touch) => {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const getTouchCenter = (t1: React.Touch, t2: React.Touch) => {
+    return {
+      x: (t1.clientX + t2.clientX) / 2,
+      y: (t1.clientY + t2.clientY) / 2
+    };
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // e.preventDefault(); // Prevents scroll, but must be careful with accessibility
+    if (e.touches.length === 1) {
+      isDragging.current = true;
+      lastMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.touches.length === 2) {
+      isDragging.current = false;
+      const dist = getTouchDist(e.touches[0], e.touches[1]);
+      touchState.current = {
+        dist,
+        kStart: transform.k,
+        xStart: transform.x,
+        yStart: transform.y,
+      };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // e.preventDefault(); // Stop iOS from panning the whole page
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+
+    if (e.touches.length === 1 && isDragging.current && lastMousePos.current) {
+       // Single Finger Pan
+       const dx = e.touches[0].clientX - lastMousePos.current.x;
+       const dy = e.touches[0].clientY - lastMousePos.current.y;
+       setTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+       lastMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } 
+    else if (e.touches.length === 2) {
+       // Pinch Zoom
+       const newDist = getTouchDist(e.touches[0], e.touches[1]);
+       const scaleFactor = newDist / touchState.current.dist;
+       
+       let newK = touchState.current.kStart * scaleFactor;
+       newK = Math.max(0.1, Math.min(newK, 20));
+
+       // Calculate center in screen coordinates
+       const center = getTouchCenter(e.touches[0], e.touches[1]);
+       const cx = center.x - rect.left;
+       const cy = center.y - rect.top;
+
+       // Formula: newPos = Center - (Center - OldPos) * (NewScale / OldScale)
+       // But strictly: we are pivoting around the center point relative to the *initial* pinch start
+       
+       // Simplified Relative Zoom logic:
+       // We know the canvas was at touchState.current.x/y when scale was kStart.
+       // We want the point (cx, cy) to remain under the fingers.
+       // Canvas World Point under fingers: P_world = (cx - xStart) / kStart
+       // New X: xNew = cx - P_world * newK
+       
+       const worldX = (cx - touchState.current.xStart) / touchState.current.kStart;
+       const worldY = (cy - touchState.current.yStart) / touchState.current.kStart;
+
+       const newX = cx - worldX * newK;
+       const newY = cy - worldY * newK;
+
+       setTransform({ k: newK, x: newX, y: newY });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isDragging.current = false;
+    lastMousePos.current = null;
+  };
+
 
   const fitToScreen = () => {
       if (!containerRef.current) return;
@@ -283,20 +360,19 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       const scaleH = availableH / A3_HEIGHT;
       const newK = Math.min(scaleW, scaleH);
       
+      // Center it
       const newX = (rect.width - A3_WIDTH * newK) / 2;
       const newY = (rect.height - A3_HEIGHT * newK) / 2;
       
       setTransform({ k: newK, x: newX, y: newY });
   };
 
-  // Initial fit
+  // Initial fit when image loads
   useEffect(() => {
-    if (originalImage) {
-        fitToScreen();
-    }
-  }, [originalImage]);
+    if (originalImage) fitToScreen();
+  }, [originalImage, canvasSize.w]); // Also refit if container resizes
 
-  // Manual Zoom Controls
+  // Controls
   const zoomIn = () => setTransform(t => ({ ...t, k: Math.min(t.k * 1.2, 20) }));
   const zoomOut = () => setTransform(t => ({ ...t, k: Math.max(t.k / 1.2, 0.1) }));
 
@@ -307,12 +383,15 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       {/* Viewport */}
       <div 
         ref={containerRef}
-        className={`w-full h-full cursor-${isDragging ? 'grabbing' : 'grab'}`}
+        className="w-full h-full touch-none"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <canvas ref={canvasRef} className="block w-full h-full" />
       </div>
@@ -343,7 +422,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
           </div>
       )}
 
-      {/* Loading Overlay */}
+      {/* Loading */}
       {processing && (
         <div className="absolute inset-0 bg-neutral-900/60 flex items-center justify-center backdrop-blur-[2px] z-10 transition-all duration-300">
           <div className="flex flex-col items-center gap-3">
