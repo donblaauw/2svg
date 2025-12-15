@@ -214,7 +214,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                         className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
                     <p className="text-[10px] text-neutral-500 mt-1">
-                        Ideaal voor vinylsnijders. Maakt hoekige paden glad.
+                        0 = Strak/Geometrisch, 5 = Maximaal afgerond.
                     </p>
                  </div>
              )}

@@ -28,9 +28,8 @@ export function buildSvgFromMask(mask: MaskGrid, settings: AppSettings): string 
 
   const contours = extractAllContours(mask, internalW, internalH);
   
-  // Enforce a minimum smoothing level for export to prevent pixel steps
-  // If user sets 0, we use a minimal 0.5 smoothing to de-jag
-  const effectiveSmoothing = Math.max(settings.vectorSmoothing, 0.5);
+  // Pass the raw setting. 0 means geometric/sharp.
+  const effectiveSmoothing = settings.vectorSmoothing;
 
   for (const contour of contours) {
     // Use very high maxPoints (8000) for SVG export to ensure ultra smooth high-res curves
@@ -49,8 +48,8 @@ export function buildDxfFromMask(mask: MaskGrid, settings?: AppSettings): string
   const internalH = mask.length;
   const internalW = mask[0].length;
   
-  // Enforce minimum smoothing for DXF as well
-  const vectorSmoothing = Math.max(settings?.vectorSmoothing || 0, 0.5);
+  // Pass raw setting
+  const vectorSmoothing = settings?.vectorSmoothing ?? 0;
 
   const contours = extractAllContours(mask, internalW, internalH);
   if (!contours.length) return '';
@@ -72,22 +71,21 @@ ENTITIES
 `;
 
   for (const contour of contours) {
-    // 1. Simplify pixel steps (Jagged edge removal)
-    // Epsilon 0.5 ensures pixel steps are smoothed out
+    // 1. Simplify pixel steps
     let processed = contour;
     if (vectorSmoothing > 0) {
+       // Only simplify aggressively if smoothing is requested
        const epsilon = 0.5 + (vectorSmoothing * 0.2);
        processed = simplifyPolyline(processed, epsilon);
     }
 
-    // 2. Chaikin Smooth
-    const iterations = Math.ceil(vectorSmoothing / 2) || 1; // Ensure at least 1 pass if > 0
+    // 2. Chaikin Smooth (Only if > 0)
+    const iterations = Math.ceil(vectorSmoothing / 2); 
     if (iterations > 0) {
       processed = smoothContour(processed, iterations);
     }
     
     // 3. Simplify for DXF but keep ULTRA high resolution
-    // 8000 points prevents faceting on large curves
     const pts = simplifyPoints(processed, 8000);
     
     if (pts.length < 2) continue;
@@ -103,8 +101,6 @@ POLYLINE
 70
 1
 `;
-    // Added 62 (Color) = 1 (Red) to POLYLINE entity. 
-    // 66=1 (Vertices follow), 70=1 (Closed polyline).
     for (const [x, y] of pts) {
       const dx = x.toFixed(3);
       const dy = (A3_HEIGHT - y).toFixed(3); 

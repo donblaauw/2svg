@@ -127,10 +127,8 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         }
       }
 
-      // REMOVED BRIDGE OFFSET PARAMETER
       postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth);
       
-      // Removed deviceType specific overrides
       let smoothIter = settings.smooth;
       if (smoothIter > 0) smoothMask(bwMask, internalW, internalH, smoothIter);
 
@@ -155,7 +153,9 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       // B) Vector Preview
       const contours = extractAllContours(bwMask, internalW, internalH);
       const paths: Path2D[] = [];
-      const smoothing = Math.max(settings.vectorSmoothing, 0.5);
+      
+      // Use raw setting (0 allowed)
+      const smoothing = settings.vectorSmoothing;
       
       contours.forEach(contour => {
         const pathString = buildBezierPath(contour, 3000, smoothing);
@@ -237,6 +237,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
 
 
   // --- 4. INPUT HANDLERS (Mouse & Touch) ---
+  // ... (unchanged)
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -259,7 +260,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
     setTransform({ k: newK, x: newX, y: newY });
   };
 
-  // Mouse Handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     isDragging.current = true;
     lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -278,7 +278,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
     lastMousePos.current = null;
   };
 
-  // Touch Handlers (Pinch & Pan)
   const getTouchDist = (t1: React.Touch, t2: React.Touch) => {
     const dx = t1.clientX - t2.clientX;
     const dy = t1.clientY - t2.clientY;
@@ -293,7 +292,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    // e.preventDefault(); // Prevents scroll, but must be careful with accessibility
     if (e.touches.length === 1) {
       isDragging.current = true;
       lastMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -310,38 +308,25 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    // e.preventDefault(); // Stop iOS from panning the whole page
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
 
     if (e.touches.length === 1 && isDragging.current && lastMousePos.current) {
-       // Single Finger Pan
        const dx = e.touches[0].clientX - lastMousePos.current.x;
        const dy = e.touches[0].clientY - lastMousePos.current.y;
        setTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
        lastMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     } 
     else if (e.touches.length === 2) {
-       // Pinch Zoom
        const newDist = getTouchDist(e.touches[0], e.touches[1]);
        const scaleFactor = newDist / touchState.current.dist;
        
        let newK = touchState.current.kStart * scaleFactor;
        newK = Math.max(0.1, Math.min(newK, 20));
 
-       // Calculate center in screen coordinates
        const center = getTouchCenter(e.touches[0], e.touches[1]);
        const cx = center.x - rect.left;
        const cy = center.y - rect.top;
-
-       // Formula: newPos = Center - (Center - OldPos) * (NewScale / OldScale)
-       // But strictly: we are pivoting around the center point relative to the *initial* pinch start
-       
-       // Simplified Relative Zoom logic:
-       // We know the canvas was at touchState.current.x/y when scale was kStart.
-       // We want the point (cx, cy) to remain under the fingers.
-       // Canvas World Point under fingers: P_world = (cx - xStart) / kStart
-       // New X: xNew = cx - P_world * newK
        
        const worldX = (cx - touchState.current.xStart) / touchState.current.kStart;
        const worldY = (cy - touchState.current.yStart) / touchState.current.kStart;
@@ -358,39 +343,30 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
     lastMousePos.current = null;
   };
 
-
   const fitToScreen = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const padding = 40;
       const availableW = rect.width - padding * 2;
       const availableH = rect.height - padding * 2;
-      
       const scaleW = availableW / A3_WIDTH;
       const scaleH = availableH / A3_HEIGHT;
       const newK = Math.min(scaleW, scaleH);
-      
-      // Center it
       const newX = (rect.width - A3_WIDTH * newK) / 2;
       const newY = (rect.height - A3_HEIGHT * newK) / 2;
-      
       setTransform({ k: newK, x: newX, y: newY });
   };
 
-  // Initial fit when image loads
   useEffect(() => {
     if (originalImage) fitToScreen();
-  }, [originalImage, canvasSize.w]); // Also refit if container resizes
+  }, [originalImage, canvasSize.w]);
 
-  // Controls
   const zoomIn = () => setTransform(t => ({ ...t, k: Math.min(t.k * 1.2, 20) }));
   const zoomOut = () => setTransform(t => ({ ...t, k: Math.max(t.k / 1.2, 0.1) }));
 
 
   return (
     <div className="relative w-full h-full bg-neutral-900 overflow-hidden select-none touch-none group">
-      
-      {/* Viewport */}
       <div 
         ref={containerRef}
         className="w-full h-full touch-none"
@@ -406,10 +382,8 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         <canvas ref={canvasRef} className="block w-full h-full" />
       </div>
 
-      {/* Floating Toolbar */}
       <div className="absolute bottom-6 right-6 flex flex-col gap-2 pointer-events-none">
           <div className="bg-neutral-800/90 backdrop-blur-md border border-neutral-700 rounded-lg shadow-xl p-1.5 flex flex-col gap-1 pointer-events-auto">
-             {/* Toggle View Mode Button */}
              {onToggleViewMode && (
                  <>
                     <button 
@@ -439,14 +413,12 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
           </div>
       </div>
 
-      {/* Info Overlay */}
       {transform.k > 2 && (
           <div className="absolute top-4 left-4 bg-neutral-900/80 backdrop-blur px-3 py-1.5 rounded-full border border-neutral-700 text-xs text-neutral-400 pointer-events-none">
               Zoom: {Math.round(transform.k * 100)}%
           </div>
       )}
 
-      {/* Mode Overlay - Disappears after a few seconds */}
       <div key={settings.bezierMode ? 'mode-v' : 'mode-b'} className="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none animate-[fadeOut_2s_ease-in-out_forwards]">
          <div className="bg-neutral-900/80 backdrop-blur px-4 py-2 rounded-full border border-neutral-700 text-sm font-semibold text-white shadow-xl flex items-center gap-2">
              {settings.bezierMode ? <ScanLine size={16} className="text-blue-400"/> : <ImageIcon size={16} className="text-emerald-400"/>}
@@ -463,7 +435,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         }
       `}</style>
 
-      {/* Loading */}
       {processing && (
         <div className="absolute inset-0 bg-neutral-900/60 flex items-center justify-center backdrop-blur-[2px] z-10 transition-all duration-300">
           <div className="flex flex-col items-center gap-3">
