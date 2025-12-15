@@ -17,8 +17,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   stencilMode: true,
   bezierMode: false,   // Default to solid view (unchecked)
   bridgeWidth: 2,
-  bridgeOffset: 0,
-  deviceType: 'vinyl',
   makerName: '',
 };
 
@@ -61,7 +59,7 @@ function App() {
         const handle = await window.showSaveFilePicker({
           suggestedName: filename,
           types: [{
-            description: type === 'svg' ? 'SVG File' : 'DXF File',
+            description: type === 'svg' ? 'SVG Bestand' : 'DXF Bestand',
             accept: type === 'svg' 
               ? { 'image/svg+xml': ['.svg'] } 
               : { 'application/dxf': ['.dxf'] } // Note: text/plain can be used as fallback if this fails
@@ -99,7 +97,7 @@ function App() {
         }, 100);
     } catch (e) {
         console.error('Download fallback failed', e);
-        alert('Could not save file. Please check permissions.');
+        alert('Kon bestand niet opslaan. Controleer de rechten.');
     }
   };
 
@@ -129,13 +127,13 @@ function App() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white tracking-tight leading-tight">Pro Bitmap → Vector</h1>
-              <p className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">A3 Studio Edition</p>
+              <p className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">A3 Studio Editie</p>
             </div>
           </div>
           <div className="hidden md:flex items-center gap-4 text-xs font-medium text-neutral-500">
              <span>v2.1.0</span>
              <span className="w-1 h-1 bg-neutral-700 rounded-full"/>
-             <span>Vinyl & Laser Optimized</span>
+             <span>Geoptimaliseerd voor Vinyl & Laser</span>
           </div>
         </div>
       </header>
@@ -163,7 +161,7 @@ function App() {
                 {/* Floating Canvas Meta Info */}
                 <div className="absolute top-6 left-6 flex gap-2 pointer-events-none">
                     <div className="bg-neutral-900/90 backdrop-blur border border-neutral-700 text-neutral-300 text-xs px-3 py-1.5 rounded-full font-medium shadow-xl">
-                        A3 Portrait (297 x 420mm)
+                        A3 Portret (297 x 420mm)
                     </div>
                 </div>
             </div>

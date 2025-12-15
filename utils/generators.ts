@@ -1,3 +1,4 @@
+
 import { A3_WIDTH, A3_HEIGHT } from '../constants';
 import { MaskGrid, AppSettings } from '../types';
 import { extractAllContours, buildBezierPath, smoothContour, simplifyPolyline } from './processing';
@@ -19,15 +20,7 @@ export function buildSvgFromMask(mask: MaskGrid, settings: AppSettings): string 
   const internalW = mask[0].length;
   
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${A3_WIDTH}" height="${A3_HEIGHT}" viewBox="0 0 ${A3_WIDTH} ${A3_HEIGHT}" `;
-
-  const isLaser = settings.deviceType.startsWith('laser');
-
-  if (isLaser) {
-    svg += 'shape-rendering="geometricPrecision">\n';
-  } else {
-    svg += 'shape-rendering="geometricPrecision">\n';
-  }
+<svg xmlns="http://www.w3.org/2000/svg" width="${A3_WIDTH}" height="${A3_HEIGHT}" viewBox="0 0 ${A3_WIDTH} ${A3_HEIGHT}" shape-rendering="geometricPrecision">\n`;
 
   // Always use vector strokes for export to avoid jagged edges
   // Changed stroke color to RED (#ff0000) for cutting lines

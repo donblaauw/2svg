@@ -302,7 +302,7 @@ export function smoothMask(mask: MaskGrid, w: number, h: number, iterations: num
   }
 }
 
-export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeHoles: boolean, bridgeHalfWidth: number, bridgeOffset: number = 0) {
+export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeHoles: boolean, bridgeHalfWidth: number) {
   if (!mask) return;
 
   // 1. Identify Background
@@ -420,23 +420,6 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
       let cxIsland = Math.round(sumX / islandPixels.length);
       let cyIsland = Math.round(sumY / islandPixels.length);
       
-      // APPLY BRIDGE OFFSET: Shift the search center Y-coordinate
-      // Invert offset because screen coords Y+ is down, but "Up" usually means Y-
-      // However, for a generic "Up/Down" slider, we can just add the raw value.
-      // Let's invert it so "Up" (positive slider usually?) means visual Up (negative Y)
-      cyIsland -= Math.round(bridgeOffset);
-
-      // If centroid not in island, use first pixel as fallback
-      // NOTE: With offset, we might push it out of the island deliberately.
-      // We check if the NEW point is valid. If not, we might want to stick to the offset.
-      // But the bridge logic relies on raycasting from *somewhere*.
-      // If the point is outside the island, the raycast 'started' logic handles it (it waits until it hits black).
-      // But we need to be careful not to start in background and hit ANOTHER island.
-      
-      // Simplification: We blindly cast from the offset point.
-      // The raycast logic below checks "if (inIsland)...".
-      // We need to initialize inIsland correctly based on where we start.
-      
       const NUM_DIRS = 36;
       let bestCand = null;
       const maxBridgeLen = Math.sqrt(w*w + h*h); 
@@ -450,10 +433,6 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
         
         let validStart = true;
         
-        // Logic to safely handle starting potentially outside the island due to offset
-        // We walk until we hit the island, then we walk until we hit background.
-        // Actually, the original logic assumed we start IN the island.
-        // Let's check start point.
         let rxStart = Math.round(tx);
         let ryStart = Math.round(ty);
         
@@ -464,12 +443,6 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
             px < 0 || py < 0 || px >= w || py >= h || bgVisited[py][px];
 
         let inIsland = isBlack(rxStart, ryStart);
-        
-        // If we start in background (because we offset too far), we need to find the island first?
-        // No, if we offset the center, we are effectively saying "Create a bridge from this Y-level".
-        // But if that Y-level is in the hole, we might bridge the WRONG thing.
-        // LIMITATION: Simple centroid shifting works best for convex shapes or small offsets.
-        // For complex shapes, this is an approximation of "moving the bridge".
         
         for (let step = 0; step < maxBridgeLen; step++) {
           tx += dx;
@@ -486,9 +459,6 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
             // We are inside the island, looking for the exit (background)
             if (!currentBlack && !currentBg) {
                // Hit a hole inside the island? treat as part of island for bridging purposes?
-               // Or treat as exit?
-               // If it's a hole we want to bridge to, it should be bgVisited (if connected to outside).
-               // If it's an internal closed hole, bgVisited is false.
                continue; 
             }
             if (currentBg) {
@@ -501,11 +471,7 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
                break;
             }
           } else {
-            // We started outside (due to offset). We need to enter the island first?
-            // Actually, if we start outside, we might just be casting rays that never hit the island.
-            // If the offset pushes the centroid out of the island, we might just fail to bridge.
-            // To make this robust: If offset pushes us out, we clamp to the island bounds?
-            // Or we iterate until we hit the island?
+            // Started outside logic removed as we removed offset
             if (currentBlack) {
                 inIsland = true;
             }

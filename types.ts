@@ -2,14 +2,12 @@
 export interface AppSettings {
   threshold: number;
   scale: number;
-  imageSize: number; // New: Controls the size of the image on the canvas (10-100%)
+  imageSize: number; // Controls the size of the image on the canvas (10-100%)
   smooth: number; // Bitmap smoothing
-  vectorSmoothing: number; // New: Vector path smoothing
+  vectorSmoothing: number; // Vector path smoothing
   stencilMode: boolean;
   bezierMode: boolean;
   bridgeWidth: number;
-  bridgeOffset: number; // New: Moves the bridge center point Y-axis
-  deviceType: string;
   makerName: string;
 }
 

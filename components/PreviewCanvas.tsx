@@ -127,12 +127,11 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         }
       }
 
-      // PASSING NEW OFFSET PARAMETER
-      postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth, settings.bridgeOffset);
+      // REMOVED BRIDGE OFFSET PARAMETER
+      postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth);
       
+      // Removed deviceType specific overrides
       let smoothIter = settings.smooth;
-      if (settings.deviceType.startsWith('vinyl') && smoothIter < 1) smoothIter = 1;
-      if (settings.deviceType === 'vinyl_ultra' && smoothIter < 2) smoothIter = 2;
       if (smoothIter > 0) smoothMask(bwMask, internalW, internalH, smoothIter);
 
       if (!active) return;
@@ -205,7 +204,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
        ctx.fillStyle = '#ccc';
        ctx.font = '30px sans-serif';
        ctx.textAlign = 'center';
-       ctx.fillText("No Image", A3_WIDTH/2, A3_HEIGHT/2);
+       ctx.fillText("Geen Afbeelding", A3_WIDTH/2, A3_HEIGHT/2);
        return;
     }
 
@@ -416,7 +415,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
                     <button 
                         onClick={onToggleViewMode} 
                         className={`p-2 rounded transition-colors ${!settings.bezierMode ? 'bg-blue-600 text-white' : 'hover:bg-neutral-700 text-neutral-300 hover:text-white'}`} 
-                        title={settings.bezierMode ? "Switch to Solid View" : "Switch to Outline View"}
+                        title={settings.bezierMode ? "Naar Vlakweergave" : "Naar Lijnweergave"}
                     >
                         {settings.bezierMode ? <ScanLine size={20} /> : <ImageIcon size={20} />}
                     </button>
@@ -427,11 +426,11 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
              <button onClick={zoomIn} className="p-2 hover:bg-neutral-700 rounded text-neutral-300 hover:text-white transition-colors" title="Zoom In">
                 <ZoomIn size={20} />
              </button>
-             <button onClick={zoomOut} className="p-2 hover:bg-neutral-700 rounded text-neutral-300 hover:text-white transition-colors" title="Zoom Out">
+             <button onClick={zoomOut} className="p-2 hover:bg-neutral-700 rounded text-neutral-300 hover:text-white transition-colors" title="Zoom Uit">
                 <ZoomOut size={20} />
              </button>
              <div className="h-px bg-neutral-700 mx-1 my-0.5" />
-             <button onClick={fitToScreen} className="p-2 hover:bg-neutral-700 rounded text-neutral-300 hover:text-blue-400 transition-colors" title="Fit to Screen">
+             <button onClick={fitToScreen} className="p-2 hover:bg-neutral-700 rounded text-neutral-300 hover:text-blue-400 transition-colors" title="Passend maken">
                 <Maximize size={20} />
              </button>
              <button onClick={() => setTransform({k: 1, x: 0, y: 0})} className="p-2 hover:bg-neutral-700 rounded text-neutral-300 hover:text-white transition-colors" title="Reset 100%">
@@ -451,7 +450,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       <div key={settings.bezierMode ? 'mode-v' : 'mode-b'} className="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none animate-[fadeOut_2s_ease-in-out_forwards]">
          <div className="bg-neutral-900/80 backdrop-blur px-4 py-2 rounded-full border border-neutral-700 text-sm font-semibold text-white shadow-xl flex items-center gap-2">
              {settings.bezierMode ? <ScanLine size={16} className="text-blue-400"/> : <ImageIcon size={16} className="text-emerald-400"/>}
-             {settings.bezierMode ? "Outline View" : "Solid View"}
+             {settings.bezierMode ? "Lijnweergave" : "Vlakweergave"}
          </div>
       </div>
 
@@ -469,7 +468,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         <div className="absolute inset-0 bg-neutral-900/60 flex items-center justify-center backdrop-blur-[2px] z-10 transition-all duration-300">
           <div className="flex flex-col items-center gap-3">
              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-             <span className="text-sm font-medium text-white tracking-wide">Vectorizing...</span>
+             <span className="text-sm font-medium text-white tracking-wide">Vectoriseren...</span>
           </div>
         </div>
       )}
