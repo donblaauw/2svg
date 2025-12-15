@@ -156,8 +156,6 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
 }
 
 
-// ... extractContour, extractAllContours, smoothMask, postProcessMask remain unchanged ...
-
 export function extractContour(mask: MaskGrid, w: number, h: number): number[][] {
   let startX = -1, startY = -1;
   outer: for (let y = 0; y < h; y++) {
@@ -273,14 +271,21 @@ export function smoothMask(mask: MaskGrid, w: number, h: number, iterations: num
   }
 }
 
-export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeHoles: boolean, bridgeHalfWidth: number) {
+export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeHoles: boolean, bridgeHalfWidth: number, invert = false) {
   if (!mask) return;
   const bgVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
   const q2: number[][] = [];
   const dirs8 = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+  
+  // 1. Identify "Mainland" (Background)
+  // Normal Mode: Mainland is White (False).
+  // Invert Mode: Mainland is Black (True).
+  const targetBg = invert ? true : false;
+
   const pushIfBg = (x: number, y: number) => {
     if (x < 0 || y < 0 || x >= w || y >= h) return;
-    if (bgVisited[y][x] || mask[y][x]) return;
+    if (bgVisited[y][x]) return;
+    if (mask[y][x] !== targetBg) return;
     bgVisited[y][x] = true;
     q2.push([x, y]);
   };
@@ -293,7 +298,10 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
     }
   }
 
-  if (!keepLargeHoles) {
+  // 2. Fill Small Holes (Noise Reduction)
+  // Only apply in Normal Mode. In Invert Mode, "Holes" are the White Text.
+  // We must preserve the text, so we skip this cleaning step.
+  if (!invert && !keepLargeHoles) {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         if (!mask[y][x] && !bgVisited[y][x]) {
@@ -304,43 +312,58 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
     return;
   }
 
-  const holeVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-  const HOLE_MIN_AREA = 120; 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (mask[y][x] || bgVisited[y][x] || holeVisited[y][x]) continue;
-      let qh = [[x, y]];
-      holeVisited[y][x] = true;
-      let area = 0;
-      const pixels: number[][] = [];
-      while (qh.length) {
-        const [hx, hy] = qh.shift()!;
-        area++;
-        pixels.push([hx, hy]);
-        for (const [dx, dy] of dirs8) {
-          const nx = hx + dx;
-          const ny = hy + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          if (holeVisited[ny][nx] || mask[ny][nx] || bgVisited[ny][nx]) continue;
-          holeVisited[ny][nx] = true;
-          qh.push([nx, ny]);
+  // Standard "Small Hole" filling for non-Invert mode only
+  if (!invert) {
+    const holeVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
+    const HOLE_MIN_AREA = 120; 
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (mask[y][x] || bgVisited[y][x] || holeVisited[y][x]) continue;
+        let qh = [[x, y]];
+        holeVisited[y][x] = true;
+        let area = 0;
+        const pixels: number[][] = [];
+        while (qh.length) {
+          const [hx, hy] = qh.shift()!;
+          area++;
+          pixels.push([hx, hy]);
+          for (const [dx, dy] of dirs8) {
+            const nx = hx + dx;
+            const ny = hy + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            if (holeVisited[ny][nx] || mask[ny][nx] || bgVisited[ny][nx]) continue;
+            holeVisited[ny][nx] = true;
+            qh.push([nx, ny]);
+          }
         }
-      }
-      if (area < HOLE_MIN_AREA) {
-        for (const [hx, hy] of pixels) {
-          mask[hy][hx] = true;
+        if (area < HOLE_MIN_AREA) {
+          for (const [hx, hy] of pixels) {
+            mask[hy][hx] = true;
+          }
         }
       }
     }
   }
 
+  // 3. Generate Bridges
   if (!bridgeHalfWidth || bridgeHalfWidth <= 0) return;
   const BRIDGE_HALF_WIDTH = Math.min(5, Math.max(1, bridgeHalfWidth));
   const islandVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
+  const totalPixels = w * h;
+  // Threshold to ignore massive islands (like background chunks separated by bleed text)
+  // This prevents bridges from being drawn through the text void.
+  const MAX_ISLAND_RATIO = 0.15; 
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (mask[y][x] || bgVisited[y][x] || islandVisited[y][x]) continue;
+      // Find Unvisited "Islands" of True (Black).
+      // Normal Mode: Island = Black Text.
+      // Invert Mode: Island = Black Counters (inside O) AND Black Background.
+      // Note: loop skips bgVisited.
+      // In Invert Mode, bgVisited contains the huge Black Background.
+      // So this loop ONLY processes isolated Black Counter islands.
+      if (mask[y][x] !== true || bgVisited[y][x] || islandVisited[y][x]) continue;
+      
       let qIsland = [[x, y]];
       islandVisited[y][x] = true;
       const islandPixels: number[][] = [];
@@ -351,13 +374,20 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
           const nx = ix + dx;
           const ny = iy + dy;
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          if (islandVisited[ny][nx] || mask[ny][nx] || bgVisited[ny][nx]) continue;
+          if (islandVisited[ny][nx] || mask[ny][nx] !== true || bgVisited[ny][nx]) continue;
           islandVisited[ny][nx] = true;
           qIsland.push([nx, ny]);
         }
       }
 
       if (islandPixels.length === 0) continue;
+
+      // SAFETY CHECK: In invert mode, if an island is Huge, it's likely a chunk of frame
+      // that got separated by text touching edges. Bridging it would destroy the text.
+      if (invert && islandPixels.length > totalPixels * MAX_ISLAND_RATIO) {
+          continue;
+      }
+
       let sumX = 0, sumY = 0;
       for (const [ix2, iy2] of islandPixels) {
         sumX += ix2;
@@ -383,17 +413,69 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
           const rx = Math.round(tx);
           const ry = Math.round(ty);
           if (rx < 0 || ry < 0 || rx >= w || ry >= h) break;
-          const currentBlack = mask[ry][rx];
-          const currentBg = bgVisited[ry][rx];
+          
+          const currentBlack = mask[ry][rx]; // The pixel state
+          const currentBg = bgVisited[ry][rx]; // Is it Mainland?
+
+          // In Normal Mode: We walk through Black Island until we hit White (Mainland).
+          // In Invert Mode: We walk through Black Island, then White Void, until we hit Black (Mainland).
+          
           if (inIsland) {
-            if (!currentBlack && !currentBg) { continue; }
-            if (currentBg) {
-               const dist = step + 1;
-               if (!bestCand || dist < bestCand.dist) {
-                  bestCand = { angle, dx, dy, dist }; 
-               }
-               break;
-            }
+             // Logic to detect leaving the island remains similar because islandPixels is derived from unvisited 'true'.
+             // Once we hit 'false' (White), or 'bgVisited' (Mainland Black), we left the island.
+             const isIslandPixel = currentBlack && !currentBg;
+             
+             if (!isIslandPixel) {
+                // We just left the island.
+                // If Invert Mode: We are now in White Void (false). This is valid path.
+                // If Normal Mode: We are in White Mainland (false/bgVisited). This is valid destination.
+                if (invert) {
+                   // If we hit White Void, good, start searching for Mainland.
+                   inIsland = false;
+                   if (currentBg) {
+                       // Hit mainland immediately? Short bridge.
+                       const dist = step + 1;
+                        if (!bestCand || dist < bestCand.dist) {
+                            bestCand = { angle, dx, dy, dist }; 
+                        }
+                        break;
+                   }
+                } else {
+                    // Normal mode: We hit white.
+                    // Standard logic relies on finding White Background.
+                    if (currentBg) {
+                       const dist = step + 1;
+                       if (!bestCand || dist < bestCand.dist) {
+                          bestCand = { angle, dx, dy, dist }; 
+                       }
+                       break;
+                    }
+                    // If we hit a hole (white but not bg), we skip it usually.
+                    // But simplified logic: continue.
+                    inIsland = false; // logic correction
+                }
+             }
+          } else {
+             // We are outside the island.
+             // Normal Mode: We check if we hit bgVisited (Mainland).
+             // Invert Mode: We check if we hit bgVisited (Mainland Black).
+             
+             if (currentBg) {
+                 const dist = step + 1;
+                 if (!bestCand || dist < bestCand.dist) {
+                    bestCand = { angle, dx, dy, dist }; 
+                 }
+                 break;
+             }
+             
+             // If we hit another obstacle?
+             // Normal: Another Black Island?
+             // Invert: Another Black Island?
+             // Ideally we shouldn't bridge through other islands.
+             if (currentBlack && !currentBg) {
+                 // Hit another island, abort this ray.
+                 break;
+             }
           }
         }
       }
@@ -405,20 +487,31 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
         const perpY = dxBridge;
         const maxStepsBridge = bestCand.dist + 2;
         let started = false;
+        
         for (let step = 0; step <= maxStepsBridge; step++) {
           const fx = cxIsland + 0.5 + dxBridge * step;
           const fy = cyIsland + 0.5 + dyBridge * step;
           const cxPix = Math.round(fx);
           const cyPix = Math.round(fy);
           if (cxPix < 0 || cyPix < 0 || cxPix >= w || cyPix >= h) break;
-          if (mask[cyPix][cxPix]) { started = true; }
+          
+          // Logic for applying bridge
+          // We need to determine start of drawing.
+          // Start when we see the island pixel.
+          if (mask[cyPix][cxPix] === true && !bgVisited[cyPix][cxPix]) { started = true; }
           if (!started) continue; 
+          
+          // Stop if we hit mainland
           if (bgVisited[cyPix][cxPix]) break; 
+
+          // Draw Bridge
+          // Normal: Erase Black (set false).
+          // Invert: Fill White (set true).
           for (let off = -BRIDGE_HALF_WIDTH; off <= BRIDGE_HALF_WIDTH; off++) {
             const ox = cxPix + Math.round(perpX * off);
             const oy = cyPix + Math.round(perpY * off);
             if (ox < 0 || oy < 0 || ox >= w || oy >= h) continue;
-            mask[oy][ox] = false; 
+            mask[oy][ox] = invert ? true : false; 
           }
         }
       }

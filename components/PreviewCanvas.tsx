@@ -117,43 +117,36 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       const imgData = tctx.getImageData(0, 0, internalW, internalH);
       const data = imgData.data;
       const thresh = settings.threshold;
+      const invert = settings.invert;
       
       const bwMask: MaskGrid = new Array(internalH);
-      // 1. Initial Thresholding (Always Positive Logic first for correct Bridge calculation)
-      //    We calculate bridges on the "Positive" image (Black Object, White Bg) because
-      //    the bridge algorithm relies on finding the white background to connect to.
+      // 1. Initial Thresholding with Invert Logic
+      // If invert is true: Light pixels (> thresh) become Black (Material). Dark pixels become White (Holes).
       for (let y = 0; y < internalH; y++) {
         bwMask[y] = new Array(internalW);
         for (let x = 0; x < internalW; x++) {
           const idx = (y * internalW + x) * 4;
           const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-          bwMask[y][x] = lum < thresh;
+          if (invert) {
+             bwMask[y][x] = lum >= thresh;
+          } else {
+             bwMask[y][x] = lum < thresh;
+          }
         }
       }
 
-      // 2. Apply Bridges & Smoothing (On Positive Mask)
-      postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth);
+      // 2. Apply Bridges & Smoothing
+      // We pass 'invert' flag to ensure bridges are calculated correctly for the topology
+      postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth, invert);
       
       let smoothIter = settings.smooth;
       if (smoothIter > 0) smoothMask(bwMask, internalW, internalH, smoothIter);
-
-      // 3. Apply Invert (Post-Process)
-      //    If the user wants a negative, we invert the result.
-      //    The "White Bridges" (Holes) created in step 2 become "Black Bridges" (Material)
-      //    connecting the now-inverted islands to the frame.
-      if (settings.invert) {
-        for (let y = 0; y < internalH; y++) {
-            for (let x = 0; x < internalW; x++) {
-                bwMask[y][x] = !bwMask[y][x];
-            }
-        }
-      }
 
       if (!active) return;
 
       onMaskReady(bwMask);
 
-      // A) Raster Preview (kept for data consistency, but rendering uses vectors below)
+      // A) Raster Preview
       const previewData = new ImageData(internalW, internalH);
       for (let y = 0; y < internalH; y++) {
         for (let x = 0; x < internalW; x++) {
