@@ -18,6 +18,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   bezierMode: false,   // Default to solid view (unchecked)
   bridgeWidth: 2,
   makerName: '',
+  invert: false,
 };
 
 function App() {

@@ -124,7 +124,11 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         for (let x = 0; x < internalW; x++) {
           const idx = (y * internalW + x) * 4;
           const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-          bwMask[y][x] = lum < thresh;
+          if (settings.invert) {
+             bwMask[y][x] = lum >= thresh;
+          } else {
+             bwMask[y][x] = lum < thresh;
+          }
         }
       }
 
