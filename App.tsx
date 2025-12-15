@@ -11,11 +11,13 @@ import { Layers } from 'lucide-react';
 const DEFAULT_SETTINGS: AppSettings = {
   threshold: 140,
   scale: 60,
+  imageSize: 60, // Default to 60% of A3 size
   smooth: 1, 
   vectorSmoothing: 1, // Start with 1 to avoid raw pixel steps
   stencilMode: true,
-  bezierMode: true,   // Default to vector view so preview matches smooth export
+  bezierMode: false,   // Default to solid view (unchecked)
   bridgeWidth: 2,
+  bridgeOffset: 0,
   deviceType: 'vinyl',
   makerName: '',
 };

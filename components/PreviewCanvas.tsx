@@ -87,10 +87,16 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       const tctx = tempCanvas.getContext('2d', { willReadFrequently: true });
       if (!tctx) return;
 
-      // Draw image fitted to A3 aspect ratio
-      const scaleToA3 = Math.min(A3_WIDTH / originalImage.width, A3_HEIGHT / originalImage.height);
-      const drawW = originalImage.width * scaleToA3;
-      const drawH = originalImage.height * scaleToA3;
+      // --- NEW IMAGE PLACEMENT LOGIC ---
+      // Goal: Scale image so its longest side is X% of the canvas's longest side.
+      const canvasMax = Math.max(A3_WIDTH, A3_HEIGHT);
+      const imageMax = Math.max(originalImage.width, originalImage.height);
+      
+      // Calculate uniform scale factor based on settings
+      const scaleFactor = (canvasMax * (settings.imageSize / 100)) / imageMax;
+      
+      const drawW = originalImage.width * scaleFactor;
+      const drawH = originalImage.height * scaleFactor;
       
       const a3Canvas = document.createElement('canvas');
       a3Canvas.width = A3_WIDTH;
@@ -100,8 +106,11 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       
       a3Ctx.fillStyle = '#ffffff';
       a3Ctx.fillRect(0, 0, A3_WIDTH, A3_HEIGHT);
+      
+      // Draw centered
       a3Ctx.drawImage(originalImage, (A3_WIDTH - drawW)/2, (A3_HEIGHT - drawH)/2, drawW, drawH);
       
+      // Scale down to internal working resolution
       tctx.drawImage(a3Canvas, 0, 0, internalW, internalH);
       
       const imgData = tctx.getImageData(0, 0, internalW, internalH);
@@ -118,7 +127,8 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         }
       }
 
-      postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth);
+      // PASSING NEW OFFSET PARAMETER
+      postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth, settings.bridgeOffset);
       
       let smoothIter = settings.smooth;
       if (settings.deviceType.startsWith('vinyl') && smoothIter < 1) smoothIter = 1;

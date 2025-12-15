@@ -95,6 +95,17 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         />
         {openSections.image && (
           <div className="p-5 space-y-5 bg-neutral-800/50">
+             <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-xs font-medium text-neutral-300">Image Size (on A3)</label>
+                <span className="text-xs font-mono text-blue-400">{settings.imageSize}%</span>
+              </div>
+              <input 
+                type="range" min="10" max="100" value={settings.imageSize} 
+                onChange={(e) => update('imageSize', Number(e.target.value))}
+                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+            </div>
             <div>
               <div className="flex justify-between mb-2">
                 <label className="text-xs font-medium text-neutral-300">Threshold (Black/White)</label>
@@ -150,17 +161,39 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
              </div>
              
              {settings.stencilMode && (
-                 <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="flex justify-between mb-2">
-                        <label className="text-xs font-medium text-neutral-300">Bridge Width</label>
-                        <span className="text-xs font-mono text-blue-400">{settings.bridgeWidth}</span>
+                 <div className="animate-in fade-in slide-in-from-top-1 duration-200 space-y-4">
+                    {/* Bridge Width */}
+                    <div>
+                        <div className="flex justify-between mb-2">
+                            <label className="text-xs font-medium text-neutral-300">Bridge Width</label>
+                            <span className="text-xs font-mono text-blue-400">{settings.bridgeWidth}</span>
+                        </div>
+                        <input 
+                            type="range" min="0" max="4" step="1"
+                            value={settings.bridgeWidth} 
+                            onChange={(e) => update('bridgeWidth', Number(e.target.value))}
+                            className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
                     </div>
-                    <input 
-                        type="range" min="0" max="4" step="1"
-                        value={settings.bridgeWidth} 
-                        onChange={(e) => update('bridgeWidth', Number(e.target.value))}
-                        className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                    />
+                    
+                    {/* Bridge Position Offset */}
+                     <div>
+                        <div className="flex justify-between mb-2">
+                            <label className="text-xs font-medium text-neutral-300">Bridge Position Y</label>
+                            <span className="text-xs font-mono text-blue-400">{settings.bridgeOffset > 0 ? '+' : ''}{settings.bridgeOffset}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-neutral-500">Up</span>
+                            <input 
+                                type="range" min="-30" max="30" step="1"
+                                value={settings.bridgeOffset} 
+                                onChange={(e) => update('bridgeOffset', Number(e.target.value))}
+                                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                            />
+                            <span className="text-[10px] text-neutral-500">Down</span>
+                        </div>
+                    </div>
+
                     <p className="text-[10px] text-emerald-400 mt-2 flex gap-1">
                         <Info size={10} className="mt-0.5"/>
                         Strict Mode Active: All islands will be connected.
