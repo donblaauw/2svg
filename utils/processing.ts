@@ -4,14 +4,9 @@ import { MaskGrid } from '../types';
 
 // --- Vector Math Helpers ---
 const sub = (a: number[], b: number[]) => [a[0] - b[0], a[1] - b[1]];
+const add = (a: number[], b: number[]) => [a[0] + b[0], a[1] + b[1]];
+const scale = (a: number[], s: number) => [a[0] * s, a[1] * s];
 const dist = (a: number[], b: number[]) => Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2));
-const norm = (a: number[]) => {
-  const l = Math.sqrt(a[0] * a[0] + a[1] * a[1]);
-  return l === 0 ? [0, 0] : [a[0] / l, a[1] / l];
-};
-const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1];
-
-// --- Algorithms ---
 
 // Helper: Perpendicular distance from point p to line segment v-w
 function perpendicularDistance(p: number[], v: number[], w: number[]) {
@@ -74,26 +69,45 @@ export function smoothContour(points: number[][], iterations = 1): number[][] {
   return pts;
 }
 
-// Build SVG Path Data
+// Helper to calculate control point for a knot
+const getControlPoint = (
+  current: number[],
+  previous: number[],
+  next: number[],
+  reverse: boolean,
+  smoothing: number
+) => {
+  // Vector from prev to next
+  const p = previous || current;
+  const n = next || current;
+  
+  // Vector form prev to next
+  const v = sub(n, p);
+  const d = dist(n, p);
+  
+  // If points are coincident, return current
+  if (d === 0) return current;
+
+  // Normalize and scale by smoothing factor
+  // Smoothing 0-5 maps to tension factor ~0 to 0.25
+  const tension = (smoothing / 5.0) * 0.2;
+  
+  // Scale vector
+  const s = scale(v, tension);
+  
+  // Return control point location
+  return reverse ? sub(current, s) : add(current, s);
+};
+
+// Build SVG Path Data using Catmull-Rom like tension for smoothing
 export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoothing = 0): string {
   if (!points || points.length < 3) return "";
   
-  // 1. Pre-process: Corner cutting (Chaikin)
-  // Only apply Chaikin if smoothing > 0. If 0, we want sharp geometric lines.
-  let processed = points;
-  if (vectorSmoothing > 0) {
-      processed = smoothContour(points, 1);
-  }
-
-  // 2. Aggressive Simplification
-  // Epsilon calculation:
-  // If smoothing = 0, we use a small epsilon (0.4) to remove minimal noise but keep steps.
-  // If smoothing > 0, we scale from 0.8 up to 7+
-  const epsilon = vectorSmoothing === 0 
-      ? 0.4 
-      : 0.8 + Math.pow(vectorSmoothing, 1.5) * 0.6;
-      
-  processed = simplifyPolyline(processed, epsilon);
+  // 1. Simplification
+  // If smoothing is 0 (geometric), we use a standard epsilon.
+  // If smoothing is high, we can increase epsilon slightly to remove noise that would distort curves.
+  const epsilon = vectorSmoothing === 0 ? 0.4 : 0.5 + (vectorSmoothing * 0.1);
+  let processed = simplifyPolyline(points, epsilon);
   
   if (processed.length > maxPoints) {
       const step = Math.ceil(processed.length / maxPoints);
@@ -102,60 +116,47 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
   
   if (processed.length < 3) return "";
 
-  // 3. Smart Cubic Bezier Construction
+  // 2. Path Construction
+  // Start path
   let d = `M ${processed[0][0].toFixed(2)} ${processed[0][1].toFixed(2)}`;
-  const L = processed.length;
 
-  // If smoothing is 0, baseAlpha is 0 (lines).
-  // If smoothing > 0, starts at 0.14 and increases.
-  const baseAlpha = vectorSmoothing === 0 ? 0 : 0.14 + (vectorSmoothing * 0.02);
-  const cornerThreshold = 0.6; 
-
-  for (let i = 0; i < L; i++) {
-    const p0 = processed[(i - 1 + L) % L];
-    const p1 = processed[i];
-    const p2 = processed[(i + 1) % L];
-    const p3 = processed[(i + 2) % L];
-
-    const dist12 = dist(p1, p2);
-    
-    let tan1 = sub(p2, p0);
-    tan1 = norm(tan1);
-
-    let tan2 = sub(p3, p1);
-    tan2 = norm(tan2);
-
-    const v01 = norm(sub(p1, p0));
-    const v12 = norm(sub(p2, p1));
-    const dot1 = dot(v01, v12); 
-    
-    const v23 = norm(sub(p3, p2));
-    const dot2 = dot(v12, v23);
-
-    let alpha1 = baseAlpha;
-    if (dot1 < cornerThreshold) {
-        alpha1 = dot1 < 0 ? 0 : alpha1 * (dot1 / cornerThreshold); 
+  // If Smoothing is 0, we simply draw straight lines (Polygons)
+  if (vectorSmoothing === 0) {
+    for (let i = 1; i < processed.length; i++) {
+        d += ` L ${processed[i][0].toFixed(2)} ${processed[i][1].toFixed(2)}`;
     }
-
-    let alpha2 = baseAlpha;
-    if (dot2 < cornerThreshold) {
-        alpha2 = dot2 < 0 ? 0 : alpha2 * (dot2 / cornerThreshold);
-    }
-
-    const cp1x = p1[0] + tan1[0] * (dist12 * alpha1);
-    const cp1y = p1[1] + tan1[1] * (dist12 * alpha1);
-    
-    const cp2x = p2[0] - tan2[0] * (dist12 * alpha2);
-    const cp2y = p2[1] - tan2[1] * (dist12 * alpha2);
-    
-    d += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2[0].toFixed(2)} ${p2[1].toFixed(2)}`;
+    d += " Z";
+    return d;
   }
+
+  // If Smoothing > 0, we calculate Cubic Bezier curves
+  const L = processed.length;
+  for (let i = 0; i < L; i++) {
+    // Current segment start point (p0) and end point (p1)
+    // Note: The contour is closed, so we wrap around
+    const p0 = processed[i];
+    const p1 = processed[(i + 1) % L];
+    
+    // Neighbors for tangent calculation
+    const pMinus1 = processed[(i - 1 + L) % L];
+    const p2 = processed[(i + 2) % L];
+
+    // Calculate Control Points
+    // CP1 is associated with p0, looking towards p1
+    const cp1 = getControlPoint(p0, pMinus1, p1, false, vectorSmoothing);
+    
+    // CP2 is associated with p1, looking back at p0
+    const cp2 = getControlPoint(p1, p0, p2, true, vectorSmoothing);
+
+    d += ` C ${cp1[0].toFixed(2)} ${cp1[1].toFixed(2)}, ${cp2[0].toFixed(2)} ${cp2[1].toFixed(2)}, ${p1[0].toFixed(2)} ${p1[1].toFixed(2)}`;
+  }
+
   d += " Z";
   return d;
 }
 
+
 // ... extractContour, extractAllContours, smoothMask, postProcessMask remain unchanged ...
-// To ensure the file is complete without errors, re-exporting the rest unchanged:
 
 export function extractContour(mask: MaskGrid, w: number, h: number): number[][] {
   let startX = -1, startY = -1;
