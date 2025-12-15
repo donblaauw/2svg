@@ -19,6 +19,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
   // State for rendering
   const [processing, setProcessing] = useState(false);
   const [vectorPaths, setVectorPaths] = useState<Path2D[]>([]);
+  const [filledPath, setFilledPath] = useState<Path2D | null>(null); // New: Combined path for filling
   const [previewMask, setPreviewMask] = useState<ImageData | null>(null);
 
   // Viewport State
@@ -136,7 +137,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
 
       onMaskReady(bwMask);
 
-      // A) Raster Preview
+      // A) Raster Preview (kept for data consistency, but rendering uses vectors below)
       const previewData = new ImageData(internalW, internalH);
       for (let y = 0; y < internalH; y++) {
         for (let x = 0; x < internalW; x++) {
@@ -150,9 +151,10 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       }
       setPreviewMask(previewData);
 
-      // B) Vector Preview
+      // B) Vector Preview & Filled Path Construction
       const contours = extractAllContours(bwMask, internalW, internalH);
       const paths: Path2D[] = [];
+      const combinedPath = new Path2D(); // To support fill-rule evenodd for holes
       
       // Use raw setting (0 allowed)
       const smoothing = settings.vectorSmoothing;
@@ -160,10 +162,13 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       contours.forEach(contour => {
         const pathString = buildBezierPath(contour, 3000, smoothing);
         if (pathString) {
-          paths.push(new Path2D(pathString));
+          const p = new Path2D(pathString);
+          paths.push(p);
+          combinedPath.addPath(p);
         }
       });
       setVectorPaths(paths);
+      setFilledPath(combinedPath);
       setProcessing(false);
     };
 
@@ -208,17 +213,26 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
        return;
     }
 
-    if (!settings.bezierMode && previewMask) {
-        // Raster Mode
-        const temp = document.createElement('canvas');
-        temp.width = previewMask.width;
-        temp.height = previewMask.height;
-        temp.getContext('2d')?.putImageData(previewMask, 0, 0);
-        ctx.imageSmoothingEnabled = false; 
-        ctx.drawImage(temp, 0, 0, A3_WIDTH, A3_HEIGHT);
+    if (!settings.bezierMode) {
+        // Mode: Vlakweergave (Raster/Filled)
+        // We now render the FILLED vector path to show the exact smoothing effect
+        // instead of the raw pixels.
+        if (filledPath) {
+            ctx.fillStyle = '#000000';
+            // "evenodd" rule ensures holes are rendered correctly
+            ctx.fill(filledPath, "evenodd");
+        } else if (previewMask) {
+            // Fallback to pixels if path generation isn't ready
+            const temp = document.createElement('canvas');
+            temp.width = previewMask.width;
+            temp.height = previewMask.height;
+            temp.getContext('2d')?.putImageData(previewMask, 0, 0);
+            ctx.imageSmoothingEnabled = false; 
+            ctx.drawImage(temp, 0, 0, A3_WIDTH, A3_HEIGHT);
+        }
     } 
     else if (settings.bezierMode) {
-        // Vector Mode
+        // Mode: Lijnweergave (Vector Lines)
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.lineWidth = LINE_WIDTH; 
@@ -229,7 +243,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         });
     }
 
-  }, [originalImage, previewMask, vectorPaths, transform, settings.bezierMode, canvasSize]);
+  }, [originalImage, previewMask, vectorPaths, filledPath, transform, settings.bezierMode, canvasSize]);
 
   useEffect(() => {
     requestAnimationFrame(draw);
