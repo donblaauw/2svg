@@ -18,29 +18,42 @@ function perpendicularDistance(p: number[], v: number[], w: number[]) {
   return dist(p, proj);
 }
 
-// Ramer-Douglas-Peucker simplification
+// Iterative Ramer-Douglas-Peucker simplification to prevent Stack Overflow
 export function simplifyPolyline(points: number[][], epsilon: number): number[][] {
   if (points.length < 3) return points;
 
-  let dmax = 0;
-  let index = 0;
-  const end = points.length - 1;
+  const pointIndicesToKeep = new Set<number>();
+  pointIndicesToKeep.add(0);
+  pointIndicesToKeep.add(points.length - 1);
 
-  for (let i = 1; i < end; i++) {
-    const d = perpendicularDistance(points[i], points[0], points[end]);
-    if (d > dmax) {
-      index = i;
-      dmax = d;
+  // Stack for iterative processing: [startIndex, endIndex]
+  const stack = [[0, points.length - 1]];
+
+  while (stack.length > 0) {
+    const [start, end] = stack.pop()!;
+    
+    let dmax = 0;
+    let index = 0;
+
+    // Standard RDP loop
+    for (let i = start + 1; i < end; i++) {
+      const d = perpendicularDistance(points[i], points[start], points[end]);
+      if (d > dmax) {
+        index = i;
+        dmax = d;
+      }
+    }
+
+    if (dmax > epsilon) {
+      pointIndicesToKeep.add(index);
+      stack.push([start, index]);
+      stack.push([index, end]);
     }
   }
 
-  if (dmax > epsilon) {
-    const res1 = simplifyPolyline(points.slice(0, index + 1), epsilon);
-    const res2 = simplifyPolyline(points.slice(index), epsilon);
-    return res1.slice(0, res1.length - 1).concat(res2);
-  } else {
-    return [points[0], points[end]];
-  }
+  // Reconstruct path from kept indices
+  const sortedIndices = Array.from(pointIndicesToKeep).sort((a, b) => a - b);
+  return sortedIndices.map(i => points[i]);
 }
 
 // Chaikin's Algorithm for corner cutting/smoothing
@@ -104,8 +117,6 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
   if (!points || points.length < 3) return "";
   
   // 1. Simplification
-  // If smoothing is 0 (geometric), we use a standard epsilon.
-  // If smoothing is high, we can increase epsilon slightly to remove noise that would distort curves.
   const epsilon = vectorSmoothing === 0 ? 0.4 : 0.5 + (vectorSmoothing * 0.1);
   let processed = simplifyPolyline(points, epsilon);
   
@@ -117,10 +128,8 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
   if (processed.length < 3) return "";
 
   // 2. Path Construction
-  // Start path
   let d = `M ${processed[0][0].toFixed(2)} ${processed[0][1].toFixed(2)}`;
 
-  // If Smoothing is 0, we simply draw straight lines (Polygons)
   if (vectorSmoothing === 0) {
     for (let i = 1; i < processed.length; i++) {
         d += ` L ${processed[i][0].toFixed(2)} ${processed[i][1].toFixed(2)}`;
@@ -129,23 +138,14 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
     return d;
   }
 
-  // If Smoothing > 0, we calculate Cubic Bezier curves
   const L = processed.length;
   for (let i = 0; i < L; i++) {
-    // Current segment start point (p0) and end point (p1)
-    // Note: The contour is closed, so we wrap around
     const p0 = processed[i];
     const p1 = processed[(i + 1) % L];
-    
-    // Neighbors for tangent calculation
     const pMinus1 = processed[(i - 1 + L) % L];
     const p2 = processed[(i + 2) % L];
 
-    // Calculate Control Points
-    // CP1 is associated with p0, looking towards p1
     const cp1 = getControlPoint(p0, pMinus1, p1, false, vectorSmoothing);
-    
-    // CP2 is associated with p1, looking back at p0
     const cp2 = getControlPoint(p1, p0, p2, true, vectorSmoothing);
 
     d += ` C ${cp1[0].toFixed(2)} ${cp1[1].toFixed(2)}, ${cp2[0].toFixed(2)} ${cp2[1].toFixed(2)}, ${p1[0].toFixed(2)} ${p1[1].toFixed(2)}`;
@@ -155,57 +155,80 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
   return d;
 }
 
+// Moore-Neighbor Tracing on Labels Grid (Memory Optimized)
+function traceContourFromLabel(
+    labels: number[][], 
+    w: number, 
+    h: number, 
+    targetLabel: number, 
+    startX: number, 
+    startY: number
+): number[][] {
+    const dirs = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+    const contour: number[][] = [];
+    let cx = startX, cy = startY, dir = 0;
+    
+    // Safety break
+    let safety = w * h * 4; 
 
-export function extractContour(mask: MaskGrid, w: number, h: number): number[][] {
-  let startX = -1, startY = -1;
-  outer: for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (mask[y][x]) { startX = x; startY = y; break outer; }
-    }
-  }
-  if (startX === -1) return [];
+    // Find valid start direction (first non-label neighbor? No, we follow boundary)
+    // Standard approach: Start tracing.
+    
+    do {
+        contour.push([cx, cy]);
+        let found = false;
+        // Check 8 neighbors
+        for (let i = 0; i < 8; i++) {
+            const nd = (dir + 7 + i) % 8; // Start checking from previous direction - 1 (backtracking)
+            const nx = cx + dirs[nd][0];
+            const ny = cy + dirs[nd][1];
+            
+            // Bounds check
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            
+            // Match label
+            if (labels[ny][nx] === targetLabel) {
+                cx = nx; 
+                cy = ny; 
+                dir = nd; 
+                found = true; 
+                break;
+            }
+        }
+        if (!found) break; // Isolated pixel
+        if (--safety <= 0) break;
+    } while (!(cx === startX && cy === startY && contour.length > 1));
 
-  const dirs = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
-  let contour: number[][] = [];
-  let cx = startX, cy = startY, dir = 0;
-  let safety = w * h * 10; 
-
-  do {
-    contour.push([cx, cy]);
-    let found = false;
-    for (let i = 0; i < 8; i++) {
-      const nd = (dir + 7 + i) % 8;
-      const nx = cx + dirs[nd][0];
-      const ny = cy + dirs[nd][1];
-      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-      if (mask[ny][nx]) {
-        cx = nx; cy = ny; dir = nd; found = true; break;
-      }
-    }
-    if (!found) break;
-    if (--safety <= 0) break;
-  } while (!(cx === startX && cy === startY && contour.length > 1));
-
-  const sx = A3_WIDTH / w;
-  const sy = A3_HEIGHT / h;
-  return contour.map(([px, py]) => [ (px+0.5)*sx, (py+0.5)*sy ]);
+    // Scale to A3
+    const sx = A3_WIDTH / w;
+    const sy = A3_HEIGHT / h;
+    return contour.map(([px, py]) => [ (px+0.5)*sx, (py+0.5)*sy ]);
 }
 
+// Optimized Extract All using Label Grid + Start Points
 export function extractAllContours(mask: MaskGrid, w: number, h: number): number[][][] {
   if (!mask) return [];
-  const visited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-  const labels: number[][] = Array.from({ length: h }, () => Array(w).fill(0));
+  
+  const visited: boolean[][] = Array.from({ length: h }, () => new Uint8Array(w) as any); // Use Uint8 for memory efficiency if possible, but boolean[][] is standard here
+  const labels: number[][] = Array.from({ length: h }, () => new Int32Array(w) as any);
   const dirs4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  const contours: number[][][] = [];
+  
   let currentLabel = 0;
+  const startPoints = new Map<number, [number, number]>();
 
+  // 1. Label Connected Components (BFS)
   for (let sy = 0; sy < h; sy++) {
     for (let sx = 0; sx < w; sx++) {
       if (!mask[sy][sx] || visited[sy][sx]) continue;
+      
       currentLabel++;
       const q = [[sx, sy]];
       visited[sy][sx] = true;
       labels[sy][sx] = currentLabel;
+      
+      // Save start point for this label for later tracing
+      startPoints.set(currentLabel, [sx, sy]);
+      
       while (q.length) {
         const [cx, cy] = q.shift()!;
         for (const [dx, dy] of dirs4) {
@@ -213,6 +236,7 @@ export function extractAllContours(mask: MaskGrid, w: number, h: number): number
           const ny = cy + dy;
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
           if (visited[ny][nx] || !mask[ny][nx]) continue;
+          
           visited[ny][nx] = true;
           labels[ny][nx] = currentLabel;
           q.push([nx, ny]);
@@ -221,25 +245,22 @@ export function extractAllContours(mask: MaskGrid, w: number, h: number): number
     }
   }
 
-  if (currentLabel === 0) return contours;
+  if (currentLabel === 0) return [];
 
+  // 2. Trace Contours without new Allocations
+  const contours: number[][][] = [];
+  
   for (let label = 1; label <= currentLabel; label++) {
-    const subMask: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-    let hasPixels = false;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (labels[y][x] === label) {
-          subMask[y][x] = true;
-          hasPixels = true;
-        }
+      const start = startPoints.get(label);
+      if (!start) continue;
+
+      // Use the shared 'labels' grid to trace, avoiding allocation of subMasks
+      const contour = traceContourFromLabel(labels, w, h, label, start[0], start[1]);
+      if (contour && contour.length >= 3) {
+          contours.push(contour);
       }
-    }
-    if (!hasPixels) continue;
-    const contour = extractContour(subMask, w, h);
-    if (contour && contour.length >= 3) {
-      contours.push(contour);
-    }
   }
+  
   return contours;
 }
 
@@ -277,9 +298,6 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
   const q2: number[][] = [];
   const dirs8 = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
   
-  // 1. Identify "Mainland" (Background)
-  // Normal Mode: Mainland is White (False).
-  // Invert Mode: Mainland is Black (True).
   const targetBg = invert ? true : false;
 
   const pushIfBg = (x: number, y: number) => {
@@ -298,9 +316,7 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
     }
   }
 
-  // 2. Fill Small Holes (Noise Reduction)
-  // Only apply in Normal Mode. In Invert Mode, "Holes" are the White Text.
-  // We must preserve the text, so we skip this cleaning step.
+  // Skip noise filling if invert is true (text mode) or if explicitly keeping holes
   if (!invert && !keepLargeHoles) {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -312,7 +328,6 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
     return;
   }
 
-  // Standard "Small Hole" filling for non-Invert mode only
   if (!invert) {
     const holeVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
     const HOLE_MIN_AREA = 120; 
@@ -345,23 +360,14 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
     }
   }
 
-  // 3. Generate Bridges
   if (!bridgeHalfWidth || bridgeHalfWidth <= 0) return;
   const BRIDGE_HALF_WIDTH = Math.min(5, Math.max(1, bridgeHalfWidth));
   const islandVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
   const totalPixels = w * h;
-  // Threshold to ignore massive islands (like background chunks separated by bleed text)
-  // This prevents bridges from being drawn through the text void.
   const MAX_ISLAND_RATIO = 0.15; 
 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      // Find Unvisited "Islands" of True (Black).
-      // Normal Mode: Island = Black Text.
-      // Invert Mode: Island = Black Counters (inside O) AND Black Background.
-      // Note: loop skips bgVisited.
-      // In Invert Mode, bgVisited contains the huge Black Background.
-      // So this loop ONLY processes isolated Black Counter islands.
       if (mask[y][x] !== true || bgVisited[y][x] || islandVisited[y][x]) continue;
       
       let qIsland = [[x, y]];
@@ -382,8 +388,6 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
 
       if (islandPixels.length === 0) continue;
 
-      // SAFETY CHECK: In invert mode, if an island is Huge, it's likely a chunk of frame
-      // that got separated by text touching edges. Bridging it would destroy the text.
       if (invert && islandPixels.length > totalPixels * MAX_ISLAND_RATIO) {
           continue;
       }
@@ -414,26 +418,15 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
           const ry = Math.round(ty);
           if (rx < 0 || ry < 0 || rx >= w || ry >= h) break;
           
-          const currentBlack = mask[ry][rx]; // The pixel state
-          const currentBg = bgVisited[ry][rx]; // Is it Mainland?
+          const currentBlack = mask[ry][rx]; 
+          const currentBg = bgVisited[ry][rx]; 
 
-          // In Normal Mode: We walk through Black Island until we hit White (Mainland).
-          // In Invert Mode: We walk through Black Island, then White Void, until we hit Black (Mainland).
-          
           if (inIsland) {
-             // Logic to detect leaving the island remains similar because islandPixels is derived from unvisited 'true'.
-             // Once we hit 'false' (White), or 'bgVisited' (Mainland Black), we left the island.
              const isIslandPixel = currentBlack && !currentBg;
-             
              if (!isIslandPixel) {
-                // We just left the island.
-                // If Invert Mode: We are now in White Void (false). This is valid path.
-                // If Normal Mode: We are in White Mainland (false/bgVisited). This is valid destination.
                 if (invert) {
-                   // If we hit White Void, good, start searching for Mainland.
                    inIsland = false;
                    if (currentBg) {
-                       // Hit mainland immediately? Short bridge.
                        const dist = step + 1;
                         if (!bestCand || dist < bestCand.dist) {
                             bestCand = { angle, dx, dy, dist }; 
@@ -441,8 +434,6 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
                         break;
                    }
                 } else {
-                    // Normal mode: We hit white.
-                    // Standard logic relies on finding White Background.
                     if (currentBg) {
                        const dist = step + 1;
                        if (!bestCand || dist < bestCand.dist) {
@@ -450,16 +441,10 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
                        }
                        break;
                     }
-                    // If we hit a hole (white but not bg), we skip it usually.
-                    // But simplified logic: continue.
-                    inIsland = false; // logic correction
+                    inIsland = false;
                 }
              }
           } else {
-             // We are outside the island.
-             // Normal Mode: We check if we hit bgVisited (Mainland).
-             // Invert Mode: We check if we hit bgVisited (Mainland Black).
-             
              if (currentBg) {
                  const dist = step + 1;
                  if (!bestCand || dist < bestCand.dist) {
@@ -467,13 +452,7 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
                  }
                  break;
              }
-             
-             // If we hit another obstacle?
-             // Normal: Another Black Island?
-             // Invert: Another Black Island?
-             // Ideally we shouldn't bridge through other islands.
              if (currentBlack && !currentBg) {
-                 // Hit another island, abort this ray.
                  break;
              }
           }
@@ -495,18 +474,11 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
           const cyPix = Math.round(fy);
           if (cxPix < 0 || cyPix < 0 || cxPix >= w || cyPix >= h) break;
           
-          // Logic for applying bridge
-          // We need to determine start of drawing.
-          // Start when we see the island pixel.
           if (mask[cyPix][cxPix] === true && !bgVisited[cyPix][cxPix]) { started = true; }
           if (!started) continue; 
           
-          // Stop if we hit mainland
           if (bgVisited[cyPix][cxPix]) break; 
 
-          // Draw Bridge
-          // Normal: Erase Black (set false).
-          // Invert: Fill White (set true).
           for (let off = -BRIDGE_HALF_WIDTH; off <= BRIDGE_HALF_WIDTH; off++) {
             const ox = cxPix + Math.round(perpX * off);
             const oy = cyPix + Math.round(perpY * off);
