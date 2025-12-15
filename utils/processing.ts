@@ -298,7 +298,10 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
   const q2: number[][] = [];
   const dirs8 = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
   
-  const targetBg = invert ? true : false;
+  // 1. Identify "Mainland"
+  // If invert=false (Default): Mainland is White (False). We want to bridge ISOLATED WHITE regions (Centers) to Mainland.
+  // If invert=true: Mainland is Black (True). We want to bridge ISOLATED BLACK regions (Centers) to Mainland.
+  const targetBg = invert ? true : false; 
 
   const pushIfBg = (x: number, y: number) => {
     if (x < 0 || y < 0 || x >= w || y >= h) return;
@@ -307,6 +310,8 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
     bgVisited[y][x] = true;
     q2.push([x, y]);
   };
+  
+  // Seed flood fill from all edges to find the Mainland
   for (let x = 0; x < w; x++) { pushIfBg(x, 0); pushIfBg(x, h - 1); }
   for (let y = 0; y < h; y++) { pushIfBg(0, y); pushIfBg(w - 1, y); }
   while (q2.length) {
@@ -316,23 +321,13 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
     }
   }
 
-  // Skip noise filling if invert is true (text mode) or if explicitly keeping holes
+  // 2. Small Noise Removal
   if (!invert && !keepLargeHoles) {
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (!mask[y][x] && !bgVisited[y][x]) {
-          mask[y][x] = true; 
-        }
-      }
-    }
-    return;
-  }
-
-  if (!invert) {
     const holeVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
     const HOLE_MIN_AREA = 120; 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
+        // If we find a White pixel that is not Mainland and not visited, it's an island/hole.
         if (mask[y][x] || bgVisited[y][x] || holeVisited[y][x]) continue;
         let qh = [[x, y]];
         holeVisited[y][x] = true;
@@ -353,26 +348,32 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
         }
         if (area < HOLE_MIN_AREA) {
           for (const [hx, hy] of pixels) {
-            mask[hy][hx] = true;
+            mask[hy][hx] = true; // Fill it (remove noise)
           }
         }
       }
     }
   }
 
+  // 3. Generate Bridges
   if (!bridgeHalfWidth || bridgeHalfWidth <= 0) return;
   const BRIDGE_HALF_WIDTH = Math.min(5, Math.max(1, bridgeHalfWidth));
   const islandVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
   const totalPixels = w * h;
   const MAX_ISLAND_RATIO = 0.15; 
 
+  // We want to connect isolated regions of the SAME COLOR as the background to the background.
+  const islandType = targetBg; 
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (mask[y][x] !== true || bgVisited[y][x] || islandVisited[y][x]) continue;
+      // Find Unvisited "Islands" of islandType.
+      if (mask[y][x] !== islandType || bgVisited[y][x] || islandVisited[y][x]) continue;
       
       let qIsland = [[x, y]];
       islandVisited[y][x] = true;
       const islandPixels: number[][] = [];
+      
       while (qIsland.length) {
         const [ix, iy] = qIsland.shift()!;
         islandPixels.push([ix, iy]);
@@ -380,7 +381,7 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
           const nx = ix + dx;
           const ny = iy + dy;
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          if (islandVisited[ny][nx] || mask[ny][nx] !== true || bgVisited[ny][nx]) continue;
+          if (islandVisited[ny][nx] || mask[ny][nx] !== islandType || bgVisited[ny][nx]) continue;
           islandVisited[ny][nx] = true;
           qIsland.push([nx, ny]);
         }
@@ -388,10 +389,10 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
 
       if (islandPixels.length === 0) continue;
 
-      if (invert && islandPixels.length > totalPixels * MAX_ISLAND_RATIO) {
-          continue;
-      }
+      // Ignore massive islands
+      if (islandPixels.length > totalPixels * MAX_ISLAND_RATIO) continue;
 
+      // Calculate centroid
       let sumX = 0, sumY = 0;
       for (const [ix2, iy2] of islandPixels) {
         sumX += ix2;
@@ -400,9 +401,10 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
       let cxIsland = Math.round(sumX / islandPixels.length);
       let cyIsland = Math.round(sumY / islandPixels.length);
       
-      const NUM_DIRS = 36;
+      const NUM_DIRS = 72;
       let bestCand = null;
-      const maxBridgeLen = Math.sqrt(w*w + h*h); 
+      const maxBridgeLen = Math.max(w, h) * 0.5; 
+      
       for (let k = 0; k < NUM_DIRS; k++) {
         const angle = (2 * Math.PI * k) / NUM_DIRS;
         const dx = Math.cos(angle);
@@ -418,41 +420,31 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
           const ry = Math.round(ty);
           if (rx < 0 || ry < 0 || rx >= w || ry >= h) break;
           
-          const currentBlack = mask[ry][rx]; 
-          const currentBg = bgVisited[ry][rx]; 
+          const currentPixel = mask[ry][rx]; 
+          const currentIsMainland = bgVisited[ry][rx]; 
 
           if (inIsland) {
-             const isIslandPixel = currentBlack && !currentBg;
-             if (!isIslandPixel) {
-                if (invert) {
-                   inIsland = false;
-                   if (currentBg) {
-                       const dist = step + 1;
-                        if (!bestCand || dist < bestCand.dist) {
-                            bestCand = { angle, dx, dy, dist }; 
-                        }
-                        break;
+             const isStillInIsland = (currentPixel === islandType) && !currentIsMainland;
+             if (!isStillInIsland) {
+                inIsland = false;
+                if (currentIsMainland) {
+                   const dist = step;
+                   if (!bestCand || dist < bestCand.dist) {
+                       bestCand = { angle, dx, dy, dist }; 
                    }
-                } else {
-                    if (currentBg) {
-                       const dist = step + 1;
-                       if (!bestCand || dist < bestCand.dist) {
-                          bestCand = { angle, dx, dy, dist }; 
-                       }
-                       break;
-                    }
-                    inIsland = false;
+                   break;
                 }
              }
           } else {
-             if (currentBg) {
-                 const dist = step + 1;
+             if (currentIsMainland) {
+                 const dist = step;
                  if (!bestCand || dist < bestCand.dist) {
                     bestCand = { angle, dx, dy, dist }; 
                  }
                  break;
              }
-             if (currentBlack && !currentBg) {
+             // Hit another isolated island
+             if (currentPixel === islandType && !currentIsMainland) {
                  break;
              }
           }
@@ -465,6 +457,8 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
         const perpX = -dyBridge;
         const perpY = dxBridge;
         const maxStepsBridge = bestCand.dist + 2;
+        
+        // Ray cast and Draw
         let started = false;
         
         for (let step = 0; step <= maxStepsBridge; step++) {
@@ -474,7 +468,8 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
           const cyPix = Math.round(fy);
           if (cxPix < 0 || cyPix < 0 || cxPix >= w || cyPix >= h) break;
           
-          if (mask[cyPix][cxPix] === true && !bgVisited[cyPix][cxPix]) { started = true; }
+          // Only start drawing once the ray passes through the source island
+          if (mask[cyPix][cxPix] === islandType && !bgVisited[cyPix][cxPix]) { started = true; }
           if (!started) continue; 
           
           if (bgVisited[cyPix][cxPix]) break; 
@@ -483,7 +478,8 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
             const ox = cxPix + Math.round(perpX * off);
             const oy = cyPix + Math.round(perpY * off);
             if (ox < 0 || oy < 0 || ox >= w || oy >= h) continue;
-            mask[oy][ox] = invert ? true : false; 
+            // Draw Material (Same color as background/island)
+            mask[oy][ox] = islandType; 
           }
         }
       }
