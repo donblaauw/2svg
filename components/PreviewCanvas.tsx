@@ -3,15 +3,16 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { AppSettings, MaskGrid } from '../types';
 import { A3_WIDTH, A3_HEIGHT } from '../constants';
 import { postProcessMask, smoothMask, extractAllContours, buildBezierPath } from '../utils/processing';
-import { ZoomIn, ZoomOut, Maximize } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, ScanLine, Image as ImageIcon } from 'lucide-react';
 
 interface PreviewCanvasProps {
   originalImage: HTMLImageElement | null;
   settings: AppSettings;
   onMaskReady: (mask: MaskGrid) => void;
+  onToggleViewMode?: () => void;
 }
 
-const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, onMaskReady }) => {
+const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, onMaskReady, onToggleViewMode }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -399,6 +400,20 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       {/* Floating Toolbar */}
       <div className="absolute bottom-6 right-6 flex flex-col gap-2 pointer-events-none">
           <div className="bg-neutral-800/90 backdrop-blur-md border border-neutral-700 rounded-lg shadow-xl p-1.5 flex flex-col gap-1 pointer-events-auto">
+             {/* Toggle View Mode Button */}
+             {onToggleViewMode && (
+                 <>
+                    <button 
+                        onClick={onToggleViewMode} 
+                        className={`p-2 rounded transition-colors ${!settings.bezierMode ? 'bg-blue-600 text-white' : 'hover:bg-neutral-700 text-neutral-300 hover:text-white'}`} 
+                        title={settings.bezierMode ? "Switch to Solid View" : "Switch to Outline View"}
+                    >
+                        {settings.bezierMode ? <ScanLine size={20} /> : <ImageIcon size={20} />}
+                    </button>
+                    <div className="h-px bg-neutral-700 mx-1 my-0.5" />
+                 </>
+             )}
+             
              <button onClick={zoomIn} className="p-2 hover:bg-neutral-700 rounded text-neutral-300 hover:text-white transition-colors" title="Zoom In">
                 <ZoomIn size={20} />
              </button>
@@ -421,6 +436,23 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
               Zoom: {Math.round(transform.k * 100)}%
           </div>
       )}
+
+      {/* Mode Overlay - Disappears after a few seconds */}
+      <div key={settings.bezierMode ? 'mode-v' : 'mode-b'} className="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none animate-[fadeOut_2s_ease-in-out_forwards]">
+         <div className="bg-neutral-900/80 backdrop-blur px-4 py-2 rounded-full border border-neutral-700 text-sm font-semibold text-white shadow-xl flex items-center gap-2">
+             {settings.bezierMode ? <ScanLine size={16} className="text-blue-400"/> : <ImageIcon size={16} className="text-emerald-400"/>}
+             {settings.bezierMode ? "Outline View" : "Solid View"}
+         </div>
+      </div>
+
+      <style>{`
+        @keyframes fadeOut {
+            0% { opacity: 0; transform: translate(-50%, -10px); }
+            10% { opacity: 1; transform: translate(-50%, 0); }
+            80% { opacity: 1; transform: translate(-50%, 0); }
+            100% { opacity: 0; transform: translate(-50%, -10px); }
+        }
+      `}</style>
 
       {/* Loading */}
       {processing && (

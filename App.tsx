@@ -155,6 +155,7 @@ function App() {
                   originalImage={originalImage} 
                   settings={settings}
                   onMaskReady={handleMaskReady}
+                  onToggleViewMode={() => setSettings(prev => ({ ...prev, bezierMode: !prev.bezierMode }))}
                 />
                 
                 {/* Floating Canvas Meta Info */}

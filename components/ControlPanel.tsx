@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { AppSettings } from '../types';
 import { DEVICE_TYPES } from '../constants';
@@ -192,7 +193,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
 
                <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-neutral-300">Use Bezier Curves</label>
+                <label className="text-sm font-medium text-neutral-300">Preview: Outlines</label>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" className="sr-only peer" checked={settings.bezierMode} onChange={(e) => update('bezierMode', e.target.checked)} />
                   <div className="w-9 h-5 bg-neutral-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
