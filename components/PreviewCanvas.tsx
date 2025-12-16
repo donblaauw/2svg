@@ -116,7 +116,14 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       
       const imgData = tctx.getImageData(0, 0, internalW, internalH);
       const data = imgData.data;
-      const thresh = settings.threshold;
+      
+      // Auto-calculate threshold based on average luminance
+      let totalLum = 0;
+      for (let i = 0; i < data.length; i += 4) {
+          totalLum += (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      }
+      const thresh = totalLum / (internalW * internalH);
+      
       const invert = settings.invert;
       
       const bwMask: MaskGrid = new Array(internalH);

@@ -114,17 +114,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                 className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
             </div>
-            <div>
-              <div className="flex justify-between mb-2">
-                <label className="text-xs font-medium text-neutral-300">Drempelwaarde (Zwart/Wit)</label>
-                <span className="text-xs font-mono text-blue-400">{settings.threshold}</span>
-              </div>
-              <input 
-                type="range" min="0" max="255" value={settings.threshold} 
-                onChange={(e) => update('threshold', Number(e.target.value))}
-                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
-            </div>
+            
             <div>
               <div className="flex justify-between mb-2">
                 <label className="text-xs font-medium text-neutral-300">Detailschaal</label>
