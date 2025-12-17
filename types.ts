@@ -9,7 +9,6 @@ export interface AppSettings {
   bezierMode: boolean;
   bridgeWidth: number;
   makerName: string;
-  invert: boolean;
 }
 
 export interface ImageDimensions {

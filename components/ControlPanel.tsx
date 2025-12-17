@@ -94,15 +94,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         />
         {openSections.image && (
           <div className="p-5 space-y-5 bg-neutral-800/50">
-             
-             <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-neutral-300">Inverteer Zwart/Wit</label>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" className="sr-only peer" checked={settings.invert} onChange={(e) => update('invert', e.target.checked)} />
-                  <div className="w-9 h-5 bg-neutral-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-             </div>
-
              <div>
               <div className="flex justify-between mb-2">
                 <label className="text-xs font-medium text-neutral-300">Afbeeldingsgrootte (op A3)</label>
@@ -114,7 +105,17 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                 className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
             </div>
-            
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-xs font-medium text-neutral-300">Drempelwaarde (Zwart/Wit)</label>
+                <span className="text-xs font-mono text-blue-400">{settings.threshold}</span>
+              </div>
+              <input 
+                type="range" min="0" max="255" value={settings.threshold} 
+                onChange={(e) => update('threshold', Number(e.target.value))}
+                className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+            </div>
             <div>
               <div className="flex justify-between mb-2">
                 <label className="text-xs font-medium text-neutral-300">Detailschaal</label>
@@ -213,7 +214,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                         className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
                     <p className="text-[10px] text-neutral-500 mt-1">
-                        0 = Strak/Geometrisch, 5 = Maximaal afgerond.
+                        0 = Strak, 5 = Maximaal afgerond.
                     </p>
                  </div>
              )}

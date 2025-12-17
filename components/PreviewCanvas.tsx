@@ -19,7 +19,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
   // State for rendering
   const [processing, setProcessing] = useState(false);
   const [vectorPaths, setVectorPaths] = useState<Path2D[]>([]);
-  const [filledPath, setFilledPath] = useState<Path2D | null>(null); // New: Combined path for filling
   const [previewMask, setPreviewMask] = useState<ImageData | null>(null);
 
   // Viewport State
@@ -116,35 +115,19 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       
       const imgData = tctx.getImageData(0, 0, internalW, internalH);
       const data = imgData.data;
-      
-      // Auto-calculate threshold based on average luminance
-      let totalLum = 0;
-      for (let i = 0; i < data.length; i += 4) {
-          totalLum += (0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-      }
-      const thresh = totalLum / (internalW * internalH);
-      
-      const invert = settings.invert;
+      const thresh = settings.threshold;
       
       const bwMask: MaskGrid = new Array(internalH);
-      // 1. Initial Thresholding with Invert Logic
-      // If invert is true: Light pixels (> thresh) become Black (Material). Dark pixels become White (Holes).
       for (let y = 0; y < internalH; y++) {
         bwMask[y] = new Array(internalW);
         for (let x = 0; x < internalW; x++) {
           const idx = (y * internalW + x) * 4;
           const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-          if (invert) {
-             bwMask[y][x] = lum >= thresh;
-          } else {
-             bwMask[y][x] = lum < thresh;
-          }
+          bwMask[y][x] = lum < thresh;
         }
       }
 
-      // 2. Apply Bridges & Smoothing
-      // We pass 'invert' flag to ensure bridges are calculated correctly for the topology
-      postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth, invert);
+      postProcessMask(bwMask, internalW, internalH, settings.stencilMode, settings.bridgeWidth);
       
       let smoothIter = settings.smooth;
       if (smoothIter > 0) smoothMask(bwMask, internalW, internalH, smoothIter);
@@ -167,24 +150,20 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
       }
       setPreviewMask(previewData);
 
-      // B) Vector Preview & Filled Path Construction
+      // B) Vector Preview
       const contours = extractAllContours(bwMask, internalW, internalH);
       const paths: Path2D[] = [];
-      const combinedPath = new Path2D(); // To support fill-rule evenodd for holes
       
       // Use raw setting (0 allowed)
-      const smoothing = settings.vectorSmoothing;
+      const smoothing = Math.max(settings.vectorSmoothing, 0.5);
       
       contours.forEach(contour => {
         const pathString = buildBezierPath(contour, 3000, smoothing);
         if (pathString) {
-          const p = new Path2D(pathString);
-          paths.push(p);
-          combinedPath.addPath(p);
+          paths.push(new Path2D(pathString));
         }
       });
       setVectorPaths(paths);
-      setFilledPath(combinedPath);
       setProcessing(false);
     };
 
@@ -229,26 +208,17 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
        return;
     }
 
-    if (!settings.bezierMode) {
-        // Mode: Vlakweergave (Raster/Filled)
-        // We now render the FILLED vector path to show the exact smoothing effect
-        // instead of the raw pixels.
-        if (filledPath) {
-            ctx.fillStyle = '#000000';
-            // "evenodd" rule ensures holes are rendered correctly
-            ctx.fill(filledPath, "evenodd");
-        } else if (previewMask) {
-            // Fallback to pixels if path generation isn't ready
-            const temp = document.createElement('canvas');
-            temp.width = previewMask.width;
-            temp.height = previewMask.height;
-            temp.getContext('2d')?.putImageData(previewMask, 0, 0);
-            ctx.imageSmoothingEnabled = false; 
-            ctx.drawImage(temp, 0, 0, A3_WIDTH, A3_HEIGHT);
-        }
+    if (!settings.bezierMode && previewMask) {
+        // Raster Mode
+        const temp = document.createElement('canvas');
+        temp.width = previewMask.width;
+        temp.height = previewMask.height;
+        temp.getContext('2d')?.putImageData(previewMask, 0, 0);
+        ctx.imageSmoothingEnabled = false; 
+        ctx.drawImage(temp, 0, 0, A3_WIDTH, A3_HEIGHT);
     } 
     else if (settings.bezierMode) {
-        // Mode: Lijnweergave (Vector Lines)
+        // Vector Mode
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.lineWidth = LINE_WIDTH; 
@@ -259,7 +229,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         });
     }
 
-  }, [originalImage, previewMask, vectorPaths, filledPath, transform, settings.bezierMode, canvasSize]);
+  }, [originalImage, previewMask, vectorPaths, transform, settings.bezierMode, canvasSize]);
 
   useEffect(() => {
     requestAnimationFrame(draw);

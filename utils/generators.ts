@@ -29,7 +29,7 @@ export function buildSvgFromMask(mask: MaskGrid, settings: AppSettings): string 
   const contours = extractAllContours(mask, internalW, internalH);
   
   // Pass the raw setting. 0 means geometric/sharp.
-  const effectiveSmoothing = settings.vectorSmoothing;
+  const effectiveSmoothing = Math.max(settings.vectorSmoothing, 0.5);
 
   for (const contour of contours) {
     // Use very high maxPoints (8000) for SVG export to ensure ultra smooth high-res curves
@@ -48,20 +48,27 @@ export function buildDxfFromMask(mask: MaskGrid, settings?: AppSettings): string
   const internalH = mask.length;
   const internalW = mask[0].length;
   
-  // Windows/Lasercut 5.3 requires CRLF line endings, not just LF.
-  const CRLF = '\r\n';
-  
   // Pass raw setting
   const vectorSmoothing = settings?.vectorSmoothing ?? 0;
 
   const contours = extractAllContours(mask, internalW, internalH);
   if (!contours.length) return '';
 
-  // Header for AutoCAD R12 (AC1009) - Best for Lasercut 5.3 / Leetro Controllers
-  let dxf = `0${CRLF}SECTION${CRLF}2${CRLF}HEADER${CRLF}9${CRLF}$ACADVER${CRLF}1${CRLF}AC1009${CRLF}0${CRLF}ENDSEC${CRLF}`;
-  
-  // Entities Section
-  dxf += `0${CRLF}SECTION${CRLF}2${CRLF}ENTITIES${CRLF}`;
+  let dxf = `0
+SECTION
+2
+HEADER
+9
+$ACADVER
+1
+AC1009
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+`;
 
   for (const contour of contours) {
     // 1. Simplify pixel steps
@@ -83,37 +90,41 @@ export function buildDxfFromMask(mask: MaskGrid, settings?: AppSettings): string
     
     if (pts.length < 2) continue;
 
-    // Ensure the loop is explicitly closed by repeating start point if necessary
-    // Lasercut 5.3 sometimes fails to calculate "inside/outside" cuts if the geometry 
-    // relies solely on the '70' flag without physical closure.
-    const start = pts[0];
-    const end = pts[pts.length - 1];
-    if (Math.abs(start[0] - end[0]) > 0.001 || Math.abs(start[1] - end[1]) > 0.001) {
-        pts.push(start);
-    }
-
-    // POLYLINE entity (R12 style)
-    dxf += `0${CRLF}POLYLINE${CRLF}`;
-    dxf += `8${CRLF}CUT_LAYER${CRLF}`; // Layer Name
-    dxf += `62${CRLF}1${CRLF}`;         // Color 1 (Red) - Lasercut usually maps Red to Cut
-    dxf += `66${CRLF}1${CRLF}`;         // Vertices follow
-    dxf += `70${CRLF}1${CRLF}`;         // Closed flag (1 = closed)
-    
+    dxf += `0
+POLYLINE
+8
+0
+62
+1
+66
+1
+70
+1
+`;
     for (const [x, y] of pts) {
       const dx = x.toFixed(3);
-      // Flip Y because DXF origin is Bottom-Left, Screen/SVG is Top-Left
       const dy = (A3_HEIGHT - y).toFixed(3); 
-      
-      dxf += `0${CRLF}VERTEX${CRLF}`;
-      dxf += `8${CRLF}CUT_LAYER${CRLF}`;
-      dxf += `10${CRLF}${dx}${CRLF}`;
-      dxf += `20${CRLF}${dy}${CRLF}`;
-      dxf += `30${CRLF}0.0${CRLF}`;
+      dxf += `0
+VERTEX
+8
+0
+10
+${dx}
+20
+${dy}
+30
+0.0
+`;
     }
-    
-    dxf += `0${CRLF}SEQEND${CRLF}`;
+    dxf += `0
+SEQEND
+`;
   }
 
-  dxf += `0${CRLF}ENDSEC${CRLF}0${CRLF}EOF${CRLF}`;
+  dxf += `0
+ENDSEC
+0
+EOF
+`;
   return dxf;
 }
