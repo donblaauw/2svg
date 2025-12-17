@@ -201,23 +201,22 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                 </label>
              </div>
 
-             {settings.bezierMode && (
-                 <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="flex justify-between mb-2">
-                        <label className="text-xs font-medium text-neutral-300">Vectorpad Gladstrijken</label>
-                        <span className="text-xs font-mono text-blue-400">{settings.vectorSmoothing}</span>
-                    </div>
-                    <input 
-                        type="range" min="0" max="5" step="1"
-                        value={settings.vectorSmoothing} 
-                        onChange={(e) => update('vectorSmoothing', Number(e.target.value))}
-                        className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                    />
-                    <p className="text-[10px] text-neutral-500 mt-1">
-                        0 = Strak, 5 = Maximaal afgerond.
-                    </p>
-                 </div>
-             )}
+             {/* Moved out of the conditional block to be always visible */}
+             <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex justify-between mb-2">
+                    <label className="text-xs font-medium text-neutral-300">Vectorpad Gladstrijken</label>
+                    <span className="text-xs font-mono text-blue-400">{settings.vectorSmoothing}</span>
+                </div>
+                <input 
+                    type="range" min="0" max="5" step="1"
+                    value={settings.vectorSmoothing} 
+                    onChange={(e) => update('vectorSmoothing', Number(e.target.value))}
+                    className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                />
+                <p className="text-[10px] text-neutral-500 mt-1">
+                    0 = Strak, 5 = Maximaal afgerond.
+                </p>
+             </div>
            </div>
         )}
 
