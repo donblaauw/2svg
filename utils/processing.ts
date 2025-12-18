@@ -13,7 +13,6 @@ const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1];
 
 // --- Algorithms ---
 
-// Helper: Perpendicular distance from point p to line segment v-w
 function perpendicularDistance(p: number[], v: number[], w: number[]) {
   const l2 = Math.pow(dist(v, w), 2);
   if (l2 === 0) return dist(p, v);
@@ -23,7 +22,6 @@ function perpendicularDistance(p: number[], v: number[], w: number[]) {
   return dist(p, proj);
 }
 
-// Ramer-Douglas-Peucker simplification
 export function simplifyPolyline(points: number[][], epsilon: number): number[][] {
   if (points.length < 3) return points;
 
@@ -48,7 +46,6 @@ export function simplifyPolyline(points: number[][], epsilon: number): number[][
   }
 }
 
-// Chaikin's Algorithm for corner cutting/smoothing
 export function smoothContour(points: number[][], iterations = 1): number[][] {
   if (!points || points.length < 3 || iterations <= 0) return points;
   let pts = points.map(p => [p[0], p[1]]);
@@ -74,21 +71,14 @@ export function smoothContour(points: number[][], iterations = 1): number[][] {
   return pts;
 }
 
-// Build SVG Path Data
 export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoothing = 0): string {
   if (!points || points.length < 3) return "";
   
-  // 1. Pre-process: Corner cutting (Chaikin)
-  // Only apply Chaikin if smoothing > 0. If 0, we want sharp geometric lines.
   let processed = points;
   if (vectorSmoothing > 0) {
       processed = smoothContour(points, 1);
   }
 
-  // 2. Aggressive Simplification
-  // Epsilon calculation:
-  // If smoothing = 0, we use a small epsilon (0.4) to remove minimal noise but keep steps.
-  // If smoothing > 0, we scale from 0.8 up to 7+
   const epsilon = vectorSmoothing === 0 
       ? 0.4 
       : 0.8 + Math.pow(vectorSmoothing, 1.5) * 0.6;
@@ -102,12 +92,9 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
   
   if (processed.length < 3) return "";
 
-  // 3. Smart Cubic Bezier Construction
   let d = `M ${processed[0][0].toFixed(2)} ${processed[0][1].toFixed(2)}`;
   const L = processed.length;
 
-  // If smoothing is 0, baseAlpha is 0 (lines).
-  // If smoothing > 0, starts at 0.14 and increases.
   const baseAlpha = vectorSmoothing === 0 ? 0 : 0.14 + (vectorSmoothing * 0.02);
   const cornerThreshold = 0.6; 
 
@@ -153,9 +140,6 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
   d += " Z";
   return d;
 }
-
-// ... extractContour, extractAllContours, smoothMask, postProcessMask remain unchanged ...
-// To ensure the file is complete without errors, re-exporting the rest unchanged:
 
 export function extractContour(mask: MaskGrid, w: number, h: number): number[][] {
   let startX = -1, startY = -1;
@@ -274,28 +258,39 @@ export function smoothMask(mask: MaskGrid, w: number, h: number, iterations: num
 
 export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeHoles: boolean, bridgeHalfWidth: number) {
   if (!mask) return;
-  const bgVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-  const q2: number[][] = [];
+  
+  const bgConnected: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
   const dirs8 = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
-  const pushIfBg = (x: number, y: number) => {
-    if (x < 0 || y < 0 || x >= w || y >= h) return;
-    if (bgVisited[y][x] || mask[y][x]) return;
-    bgVisited[y][x] = true;
-    q2.push([x, y]);
-  };
-  for (let x = 0; x < w; x++) { pushIfBg(x, 0); pushIfBg(x, h - 1); }
-  for (let y = 0; y < h; y++) { pushIfBg(0, y); pushIfBg(w - 1, y); }
-  while (q2.length) {
-    const [cx, cy] = q2.shift()!;
-    for (const [dx, dy] of dirs8) {
-      pushIfBg(cx + dx, cy + dy);
+  const dirs4 = [[1,0],[-1,0],[0,1],[0,-1]];
+  
+  // Helper function to find all white pixels connected to a start point
+  const floodBg = (startX: number, startY: number) => {
+    if (bgConnected[startY][startX] || mask[startY][startX]) return;
+    const q = [[startX, startY]];
+    bgConnected[startY][startX] = true;
+    while (q.length) {
+      const [cx, cy] = q.shift()!;
+      for (const [dx, dy] of dirs8) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        if (!bgConnected[ny][nx] && !mask[ny][nx]) {
+          bgConnected[ny][nx] = true;
+          q.push([nx, ny]);
+        }
+      }
     }
-  }
+  };
 
+  // 1. Initial background flood (from edges)
+  for (let x = 0; x < w; x++) { floodBg(x, 0); floodBg(x, h - 1); }
+  for (let y = 0; y < h; y++) { floodBg(0, y); floodBg(w - 1, y); }
+
+  // 2. Handle internal tiny holes (not connected to background)
   if (!keepLargeHoles) {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        if (!mask[y][x] && !bgVisited[y][x]) {
+        if (!mask[y][x] && !bgConnected[y][x]) {
           mask[y][x] = true; 
         }
       }
@@ -303,122 +298,114 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, keepLargeH
     return;
   }
 
+  // Identify all "islands" (white areas not currently connected to the edge)
   const holeVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-  const HOLE_MIN_AREA = 120; 
+  const islands: { pixels: [number, number][], id: number }[] = [];
+  let islandCounter = 0;
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (mask[y][x] || bgVisited[y][x] || holeVisited[y][x]) continue;
-      let qh = [[x, y]];
+      if (mask[y][x] || bgConnected[y][x] || holeVisited[y][x]) continue;
+      
+      const currentIslandPixels: [number, number][] = [];
+      const q = [[x, y]];
       holeVisited[y][x] = true;
-      let area = 0;
-      const pixels: number[][] = [];
-      while (qh.length) {
-        const [hx, hy] = qh.shift()!;
-        area++;
-        pixels.push([hx, hy]);
+      
+      while (q.length) {
+        const [cx, cy] = q.shift()!;
+        currentIslandPixels.push([cx, cy]);
         for (const [dx, dy] of dirs8) {
-          const nx = hx + dx;
-          const ny = hy + dy;
+          const nx = cx + dx;
+          const ny = cy + dy;
           if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          if (holeVisited[ny][nx] || mask[ny][nx] || bgVisited[ny][nx]) continue;
-          holeVisited[ny][nx] = true;
-          qh.push([nx, ny]);
+          if (!holeVisited[ny][nx] && !mask[ny][nx] && !bgConnected[ny][nx]) {
+            holeVisited[ny][nx] = true;
+            q.push([nx, ny]);
+          }
         }
       }
-      if (area < HOLE_MIN_AREA) {
-        for (const [hx, hy] of pixels) {
-          mask[hy][hx] = true;
-        }
+      
+      // Clean up tiny noise pixels
+      if (currentIslandPixels.length < 50) {
+        for (const [px, py] of currentIslandPixels) mask[py][px] = true;
+      } else {
+        islands.push({ pixels: currentIslandPixels, id: islandCounter++ });
       }
     }
   }
 
-  if (!bridgeHalfWidth || bridgeHalfWidth <= 0) return;
-  const BRIDGE_HALF_WIDTH = Math.min(5, Math.max(1, bridgeHalfWidth));
-  const islandVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
+  // 3. --- DYNAMIC STENCIL BRIDGING ---
+  if (!bridgeHalfWidth || bridgeHalfWidth <= 0 || islands.length === 0) return;
+  
+  const BRIDGE_WIDTH = Math.min(6, Math.max(1, bridgeHalfWidth));
 
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (mask[y][x] || bgVisited[y][x] || islandVisited[y][x]) continue;
-      let qIsland = [[x, y]];
-      islandVisited[y][x] = true;
-      const islandPixels: number[][] = [];
-      while (qIsland.length) {
-        const [ix, iy] = qIsland.shift()!;
-        islandPixels.push([ix, iy]);
-        for (const [dx, dy] of dirs8) {
-          const nx = ix + dx;
-          const ny = iy + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          if (islandVisited[ny][nx] || mask[ny][nx] || bgVisited[ny][nx]) continue;
-          islandVisited[ny][nx] = true;
-          qIsland.push([nx, ny]);
-        }
-      }
+  // Process islands one by one
+  for (const island of islands) {
+    // If this island was already connected by a previous bridge, skip
+    if (bgConnected[island.pixels[0][1]][island.pixels[0][0]]) continue;
 
-      if (islandPixels.length === 0) continue;
-      let sumX = 0, sumY = 0;
-      for (const [ix2, iy2] of islandPixels) {
-        sumX += ix2;
-        sumY += iy2;
-      }
-      let cxIsland = Math.round(sumX / islandPixels.length);
-      let cyIsland = Math.round(sumY / islandPixels.length);
+    // BFS to find the absolute shortest path to ANY 'bgConnected' pixel
+    const bridgeQueue: {pos: [number, number], path: [number, number][]}[] = [];
+    const visitedForThisBridge = new Uint8Array(w * h);
+    
+    // Start search from all pixels in the island
+    for (const [px, py] of island.pixels) {
+      bridgeQueue.push({ pos: [px, py], path: [] });
+      visitedForThisBridge[py * w + px] = 1;
+    }
+
+    let bestPath: [number, number][] | null = null;
+    
+    while (bridgeQueue.length) {
+      const {pos: [cx, cy], path} = bridgeQueue.shift()!;
       
-      const NUM_DIRS = 36;
-      let bestCand = null;
-      const maxBridgeLen = Math.sqrt(w*w + h*h); 
-      for (let k = 0; k < NUM_DIRS; k++) {
-        const angle = (2 * Math.PI * k) / NUM_DIRS;
-        const dx = Math.cos(angle);
-        const dy = Math.sin(angle);
-        let tx = cxIsland + 0.5;
-        let ty = cyIsland + 0.5;
-        let inIsland = true;
+      // Found the nearest connected white space! (Dynamic update happens here)
+      if (bgConnected[cy][cx]) {
+        bestPath = path;
+        break;
+      }
+
+      for (const [dx, dy] of dirs4) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
         
-        for (let step = 0; step < maxBridgeLen; step++) {
-          tx += dx;
-          ty += dy;
-          const rx = Math.round(tx);
-          const ry = Math.round(ty);
-          if (rx < 0 || ry < 0 || rx >= w || ry >= h) break;
-          const currentBlack = mask[ry][rx];
-          const currentBg = bgVisited[ry][rx];
-          if (inIsland) {
-            if (!currentBlack && !currentBg) { continue; }
-            if (currentBg) {
-               const dist = step + 1;
-               if (!bestCand || dist < bestCand.dist) {
-                  bestCand = { angle, dx, dy, dist }; 
-               }
-               break;
+        const idx = ny * w + nx;
+        if (visitedForThisBridge[idx]) continue;
+        // Fix: Use the correct variable name 'visitedForThisBridge'
+        visitedForThisBridge[idx] = 1;
+        
+        // Add current pixel to path if it is black (material)
+        const isBlack = mask[ny][nx];
+        const nextPath = isBlack ? [...path, [nx, ny] as [number, number]] : path;
+        
+        bridgeQueue.push({ pos: [nx, ny], path: nextPath });
+      }
+    }
+
+    // Draw the bridge and expand the connected network
+    if (bestPath && bestPath.length > 0) {
+      const bridgePixels: [number, number][] = [];
+      for (const [bx, by] of bestPath) {
+        for (let dy = -BRIDGE_WIDTH; dy <= BRIDGE_WIDTH; dy++) {
+          for (let dx = -BRIDGE_WIDTH; dx <= BRIDGE_WIDTH; dx++) {
+            if (dx*dx + dy*dy > BRIDGE_WIDTH*BRIDGE_WIDTH) continue;
+            const ox = bx + dx;
+            const oy = by + dy;
+            if (ox >= 0 && oy >= 0 && ox < w && oy < h) {
+              mask[oy][ox] = false; // Make white
+              bridgePixels.push([ox, oy]);
             }
           }
         }
       }
-
-      if (bestCand) {
-        const dxBridge = bestCand.dx;
-        const dyBridge = bestCand.dy;
-        const perpX = -dyBridge;
-        const perpY = dxBridge;
-        const maxStepsBridge = bestCand.dist + 2;
-        let started = false;
-        for (let step = 0; step <= maxStepsBridge; step++) {
-          const fx = cxIsland + 0.5 + dxBridge * step;
-          const fy = cyIsland + 0.5 + dyBridge * step;
-          const cxPix = Math.round(fx);
-          const cyPix = Math.round(fy);
-          if (cxPix < 0 || cyPix < 0 || cxPix >= w || cyPix >= h) break;
-          if (mask[cyPix][cxPix]) { started = true; }
-          if (!started) continue; 
-          if (bgVisited[cyPix][cxPix]) break; 
-          for (let off = -BRIDGE_HALF_WIDTH; off <= BRIDGE_HALF_WIDTH; off++) {
-            const ox = cxPix + Math.round(perpX * off);
-            const oy = cyPix + Math.round(perpY * off);
-            if (ox < 0 || oy < 0 || ox >= w || oy >= h) continue;
-            mask[oy][ox] = false; 
-          }
+      
+      // Update connectivity: The island AND the bridge are now part of the background network
+      // This is what prevents long lines crossing the whole screen.
+      const updateQ = [...island.pixels, ...bridgePixels];
+      for (const [ux, uy] of updateQ) {
+        if (!bgConnected[uy][ux]) {
+          floodBg(ux, uy);
         }
       }
     }
