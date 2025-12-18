@@ -53,7 +53,6 @@ function App() {
   const saveFile = async (blob: Blob, filename: string, type: 'svg' | 'dxf') => {
     let savedViaApi = false;
 
-    // 1. Try Native File System Access API (Chrome/Edge/Opera)
     if (typeof window.showSaveFilePicker === 'function') {
       try {
         const handle = await window.showSaveFilePicker({
@@ -62,7 +61,7 @@ function App() {
             description: type === 'svg' ? 'SVG Bestand' : 'DXF Bestand',
             accept: type === 'svg' 
               ? { 'image/svg+xml': ['.svg'] } 
-              : { 'application/dxf': ['.dxf'] } // Note: text/plain can be used as fallback if this fails
+              : { 'application/dxf': ['.dxf'] } 
           }]
         });
         const writable = await handle.createWritable();
@@ -70,18 +69,15 @@ function App() {
         await writable.close();
         savedViaApi = true;
       } catch (err) {
-        // If user cancels the dialog, it throws an AbortError. We stop here.
         if ((err as Error).name === 'AbortError') {
           return;
         }
-        // For other errors (e.g. security context issues), we continue to fallback
         console.warn('File System Access API failed, falling back to download link:', err);
       }
     }
 
     if (savedViaApi) return;
 
-    // 2. Fallback for Firefox/Safari or if API failed
     try {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -90,7 +86,6 @@ function App() {
         document.body.appendChild(a);
         a.click();
         
-        // Cleanup
         setTimeout(() => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
@@ -118,39 +113,30 @@ function App() {
   const canDownload = hasMask && settings.makerName.trim().length > 0;
 
   return (
-    <div className="flex flex-col min-h-screen bg-neutral-900">
-      <header className="px-6 py-4 bg-neutral-900/50 border-b border-neutral-800 backdrop-blur-md sticky top-0 z-20">
+    <div className="flex flex-col h-[100dvh] bg-neutral-900 overflow-hidden">
+      <header className="px-4 py-3 md:px-6 md:py-4 bg-neutral-900 border-b border-neutral-800 shrink-0 z-20">
         <div className="max-w-[1800px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg shadow-lg shadow-blue-500/20">
-               <Layers className="text-white" size={20} />
+            <div className="p-1.5 md:p-2 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg shadow-lg">
+               <Layers className="text-white w-4 h-4 md:w-5 md:h-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white tracking-tight leading-tight">Pro Bitmap → Vector</h1>
-              <p className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">A3 Studio Editie</p>
+              <h1 className="text-sm md:text-lg font-bold text-white tracking-tight leading-tight">Pro Bitmap → Vector</h1>
+              <p className="text-[9px] md:text-[11px] font-medium text-neutral-400 uppercase tracking-wider">A3 Studio Editie</p>
             </div>
           </div>
           <div className="hidden md:flex items-center gap-4 text-xs font-medium text-neutral-500">
              <span>v2.1.0</span>
              <span className="w-1 h-1 bg-neutral-700 rounded-full"/>
-             <span>Geoptimaliseerd voor Vinyl & Laser</span>
+             <span>Laser & Vinyl Proof</span>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-[1800px] w-full mx-auto p-4 md:p-8 flex flex-col lg:flex-row gap-8">
-        <ControlPanel 
-          settings={settings}
-          onSettingsChange={setSettings}
-          onImageUpload={handleImageUpload}
-          onDownloadSvg={handleDownloadSvg}
-          onDownloadDxf={handleDownloadDxf}
-          canDownload={canDownload}
-          imageLoaded={!!originalImage}
-        />
-
-        <div className="flex-1 min-w-0 flex flex-col h-[60vh] lg:h-[calc(100vh-140px)] lg:sticky lg:top-[100px]">
-            <div className="flex-1 bg-neutral-800/30 border border-neutral-700/50 rounded-2xl p-2 overflow-hidden relative shadow-2xl backdrop-blur-sm">
+      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* Preview Window - Takes 60% on mobile */}
+        <div className="h-[60%] lg:h-full lg:flex-1 min-w-0 flex flex-col relative z-10 lg:order-2">
+            <div className="flex-1 bg-neutral-800/20 border-b lg:border-l border-neutral-800 relative overflow-hidden">
                 <PreviewCanvas 
                   originalImage={originalImage} 
                   settings={settings}
@@ -159,12 +145,30 @@ function App() {
                 />
                 
                 {/* Floating Canvas Meta Info */}
-                <div className="absolute top-6 left-6 flex gap-2 pointer-events-none">
-                    <div className="bg-neutral-900/90 backdrop-blur border border-neutral-700 text-neutral-300 text-xs px-3 py-1.5 rounded-full font-medium shadow-xl">
-                        A3 Portret (297 x 420mm)
+                <div className="absolute top-4 left-4 flex gap-2 pointer-events-none">
+                    <div className="bg-neutral-900/90 backdrop-blur border border-neutral-700 text-neutral-300 text-[10px] px-2 py-1 rounded-full font-medium shadow-xl">
+                        A3 (297 x 420mm)
                     </div>
                 </div>
             </div>
+        </div>
+
+        {/* Control Panel - Takes 40% on mobile */}
+        <div className="h-[40%] lg:h-full lg:w-[360px] lg:shrink-0 flex flex-col bg-neutral-800 lg:order-1 relative z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.5)] lg:shadow-none">
+          {/* Mobile Grabber Handle */}
+          <div className="lg:hidden w-full flex justify-center py-1 bg-neutral-800 border-b border-neutral-700/50">
+             <div className="w-10 h-1 bg-neutral-600 rounded-full" />
+          </div>
+          
+          <ControlPanel 
+            settings={settings}
+            onSettingsChange={setSettings}
+            onImageUpload={handleImageUpload}
+            onDownloadSvg={handleDownloadSvg}
+            onDownloadDxf={handleDownloadDxf}
+            canDownload={canDownload}
+            imageLoaded={!!originalImage}
+          />
         </div>
       </main>
     </div>

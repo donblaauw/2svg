@@ -16,13 +16,13 @@ interface ControlPanelProps {
 const SectionHeader = ({ title, icon: Icon, isOpen, onClick }: any) => (
   <button 
     onClick={onClick}
-    className="flex items-center justify-between w-full p-4 text-left bg-neutral-800 hover:bg-neutral-750 transition-colors border-b border-neutral-700/50"
+    className="flex items-center justify-between w-full p-3 md:p-4 text-left bg-neutral-800 hover:bg-neutral-750 transition-colors border-b border-neutral-700/50 shrink-0"
   >
-    <div className="flex items-center gap-3 text-neutral-200">
-      <Icon size={18} className="text-blue-500" />
-      <span className="font-semibold text-sm">{title}</span>
+    <div className="flex items-center gap-2 md:gap-3 text-neutral-200">
+      <Icon size={16} className="text-blue-500 md:w-[18px] md:h-[18px]" />
+      <span className="font-semibold text-xs md:text-sm">{title}</span>
     </div>
-    {isOpen ? <ChevronUp size={16} className="text-neutral-500" /> : <ChevronDown size={16} className="text-neutral-500" />}
+    {isOpen ? <ChevronUp size={14} className="text-neutral-500 md:w-[16px] md:h-[16px]" /> : <ChevronDown size={14} className="text-neutral-500 md:w-[16px] md:h-[16px]" />}
   </button>
 );
 
@@ -37,7 +37,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 }) => {
   const [openSections, setOpenSections] = useState({
     image: true,
-    stencil: true,
+    stencil: false,
     vector: true
   });
 
@@ -56,48 +56,47 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   };
 
   return (
-    <aside className="w-full md:w-[360px] shrink-0 flex flex-col bg-neutral-800 rounded-xl border border-neutral-700 h-fit md:sticky md:top-6 shadow-2xl overflow-hidden">
+    <div className="flex flex-col h-full bg-neutral-800">
       
-      {/* Header / Upload */}
-      <div className="p-6 border-b border-neutral-700 space-y-5">
-        <div className="relative group">
-           <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-neutral-600 border-dashed rounded-lg cursor-pointer bg-neutral-800/50 hover:bg-neutral-700/50 transition-all hover:border-blue-500/50 group-hover:scale-[1.01]">
-              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                <Upload className="w-6 h-6 mb-2 text-neutral-400 group-hover:text-blue-400 transition-colors" />
-                <p className="text-sm text-neutral-400 font-medium">Klik om afbeelding te uploaden</p>
-                <p className="text-xs text-neutral-500 mt-1">PNG of JPG</p>
-              </div>
-              <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
-            </label>
+      {/* Scrollable Body */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {/* Compact Upload area for mobile */}
+        <div className="p-3 md:p-6 border-b border-neutral-700 space-y-3 md:space-y-5">
+          <div className="relative group">
+             <label className="flex flex-col items-center justify-center w-full h-14 md:h-28 border-2 border-neutral-600 border-dashed rounded-lg cursor-pointer bg-neutral-800/50 hover:bg-neutral-700/50 transition-all hover:border-blue-500/50">
+                <div className="flex flex-row md:flex-col items-center justify-center gap-2 md:pt-5 md:pb-6">
+                  <Upload className="w-4 h-4 md:w-6 md:h-6 text-neutral-400 group-hover:text-blue-400 transition-colors" />
+                  <p className="text-[11px] md:text-sm text-neutral-400 font-medium">Tik voor upload</p>
+                </div>
+                <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
+              </label>
+          </div>
+
+          <div>
+            <label className="block mb-1 text-[9px] md:text-xs font-semibold text-neutral-400 uppercase tracking-wider">Naam Maker</label>
+            <input
+              type="text"
+              className="bg-neutral-900 border border-neutral-600 text-neutral-100 text-xs md:text-sm rounded-md focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 block w-full p-1.5 md:p-2.5 placeholder-neutral-600 transition-all"
+              placeholder="Vereist..."
+              value={settings.makerName}
+              onChange={(e) => update('makerName', e.target.value)}
+            />
+          </div>
         </div>
 
-        <div>
-          <label className="block mb-1.5 text-xs font-semibold text-neutral-400 uppercase tracking-wider">Naam Maker</label>
-          <input
-            type="text"
-            className="bg-neutral-900 border border-neutral-600 text-neutral-100 text-sm rounded-md focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 block w-full p-2.5 placeholder-neutral-600 transition-all"
-            placeholder="Vereist voor download..."
-            value={settings.makerName}
-            onChange={(e) => update('makerName', e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="flex flex-col overflow-y-auto max-h-[calc(100vh-300px)] custom-scrollbar">
-        
         {/* Section 1: Image Processing */}
         <SectionHeader 
-            title="Afbeelding Overtrekken" 
+            title="Overtrekken" 
             icon={ImageIcon} 
             isOpen={openSections.image} 
             onClick={() => toggleSection('image')} 
         />
         {openSections.image && (
-          <div className="p-5 space-y-5 bg-neutral-800/50">
+          <div className="p-4 md:p-5 space-y-4 md:space-y-5 bg-neutral-800/50 border-b border-neutral-700/30">
              <div>
-              <div className="flex justify-between mb-2">
-                <label className="text-xs font-medium text-neutral-300">Afbeeldingsgrootte (op A3)</label>
-                <span className="text-xs font-mono text-blue-400">{settings.imageSize}%</span>
+              <div className="flex justify-between mb-1.5">
+                <label className="text-[10px] md:text-xs font-medium text-neutral-300">Grootte (A3)</label>
+                <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.imageSize}%</span>
               </div>
               <input 
                 type="range" min="10" max="100" value={settings.imageSize} 
@@ -106,9 +105,9 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               />
             </div>
             <div>
-              <div className="flex justify-between mb-2">
-                <label className="text-xs font-medium text-neutral-300">Drempelwaarde (Zwart/Wit)</label>
-                <span className="text-xs font-mono text-blue-400">{settings.threshold}</span>
+              <div className="flex justify-between mb-1.5">
+                <label className="text-[10px] md:text-xs font-medium text-neutral-300">Drempelwaarde</label>
+                <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.threshold}</span>
               </div>
               <input 
                 type="range" min="0" max="255" value={settings.threshold} 
@@ -117,9 +116,9 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               />
             </div>
             <div>
-              <div className="flex justify-between mb-2">
-                <label className="text-xs font-medium text-neutral-300">Detailschaal</label>
-                <span className="text-xs font-mono text-blue-400">{settings.scale}%</span>
+              <div className="flex justify-between mb-1.5">
+                <label className="text-[10px] md:text-xs font-medium text-neutral-300">Detailschaal</label>
+                <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.scale}%</span>
               </div>
               <input 
                 type="range" min="20" max="100" value={settings.scale} 
@@ -128,58 +127,49 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
               />
             </div>
              <div>
-              <div className="flex justify-between mb-2">
-                <label className="text-xs font-medium text-neutral-300">Bitmap Gladstrijken</label>
-                <span className="text-xs font-mono text-blue-400">{settings.smooth}</span>
+              <div className="flex justify-between mb-1.5">
+                <label className="text-[10px] md:text-xs font-medium text-neutral-300">Bitmap Gladstrijken</label>
+                <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.smooth}</span>
               </div>
               <input 
                 type="range" min="0" max="5" value={settings.smooth} 
                 onChange={(e) => update('smooth', Number(e.target.value))}
                 className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
-              <p className="text-[10px] text-neutral-500 mt-1">Maakt pixelranden glad voor vectorisatie.</p>
             </div>
           </div>
         )}
 
         {/* Section 2: Stencil */}
         <SectionHeader 
-            title="Stencil & Bruggen" 
+            title="Stencil" 
             icon={Layers} 
             isOpen={openSections.stencil} 
             onClick={() => toggleSection('stencil')} 
         />
         {openSections.stencil && (
-          <div className="p-5 space-y-5 bg-neutral-800/50">
+          <div className="p-4 md:p-5 space-y-4 bg-neutral-800/50 border-b border-neutral-700/30">
              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-neutral-300">Stencilmodus Inschakelen</label>
+                <label className="text-xs md:text-sm font-medium text-neutral-300">Stencilmodus</label>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" className="sr-only peer" checked={settings.stencilMode} onChange={(e) => update('stencilMode', e.target.checked)} />
-                  <div className="w-9 h-5 bg-neutral-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  <div className="w-8 h-4 md:w-9 md:h-5 bg-neutral-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 md:after:h-4 md:after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
              </div>
              
              {settings.stencilMode && (
-                 <div className="animate-in fade-in slide-in-from-top-1 duration-200 space-y-4">
-                    {/* Bridge Width */}
-                    <div>
-                        <div className="flex justify-between mb-2">
-                            <label className="text-xs font-medium text-neutral-300">Brugbreedte</label>
-                            <span className="text-xs font-mono text-blue-400">{settings.bridgeWidth}</span>
-                        </div>
-                        <input 
-                            type="range" min="0" max="4" step="1"
-                            value={settings.bridgeWidth} 
-                            onChange={(e) => update('bridgeWidth', Number(e.target.value))}
-                            className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                        />
+                <div>
+                    <div className="flex justify-between mb-1.5">
+                        <label className="text-[10px] md:text-xs font-medium text-neutral-300">Brugbreedte</label>
+                        <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.bridgeWidth}</span>
                     </div>
-                    
-                    <p className="text-[10px] text-emerald-400 mt-2 flex gap-1">
-                        <Info size={10} className="mt-0.5"/>
-                        Strikte modus actief: Alle eilanden worden verbonden.
-                    </p>
-                 </div>
+                    <input 
+                        type="range" min="0" max="4" step="1"
+                        value={settings.bridgeWidth} 
+                        onChange={(e) => update('bridgeWidth', Number(e.target.value))}
+                        className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                </div>
              )}
           </div>
         )}
@@ -192,20 +182,19 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
             onClick={() => toggleSection('vector')} 
         />
         {openSections.vector && (
-           <div className="p-5 space-y-5 bg-neutral-800/50">
+           <div className="p-4 md:p-5 space-y-4 bg-neutral-800/50 border-b border-neutral-700/30">
                <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-neutral-300">Voorbeeld: Lijnen</label>
+                <label className="text-xs md:text-sm font-medium text-neutral-300">Voorbeeld: Lijnen</label>
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" className="sr-only peer" checked={settings.bezierMode} onChange={(e) => update('bezierMode', e.target.checked)} />
-                  <div className="w-9 h-5 bg-neutral-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                  <div className="w-8 h-4 md:w-9 md:h-5 bg-neutral-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 md:after:h-4 md:after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
              </div>
 
-             {/* Moved out of the conditional block to be always visible */}
              <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                <div className="flex justify-between mb-2">
-                    <label className="text-xs font-medium text-neutral-300">Vectorpad Gladstrijken</label>
-                    <span className="text-xs font-mono text-blue-400">{settings.vectorSmoothing}</span>
+                <div className="flex justify-between mb-1.5">
+                    <label className="text-[10px] md:text-xs font-medium text-neutral-300">Vectorpad Gladstrijken</label>
+                    <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.vectorSmoothing}</span>
                 </div>
                 <input 
                     type="range" min="0" max="5" step="1"
@@ -213,35 +202,31 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
                     onChange={(e) => update('vectorSmoothing', Number(e.target.value))}
                     className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                 />
-                <p className="text-[10px] text-neutral-500 mt-1">
-                    0 = Strak, 5 = Maximaal afgerond.
-                </p>
              </div>
            </div>
         )}
-
       </div>
 
-      {/* Footer / Downloads */}
-      <div className="p-6 border-t border-neutral-700 bg-neutral-800 mt-auto">
-        <div className="grid grid-cols-2 gap-3">
+      {/* Fixed Footer with Downloads */}
+      <div className="p-3 md:p-6 border-t border-neutral-700 bg-neutral-800/95 backdrop-blur shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.3)]">
+        <div className="grid grid-cols-2 gap-2 md:gap-3">
             <button
             onClick={onDownloadSvg}
             disabled={!canDownload}
-            className={`flex items-center justify-center gap-2 text-white bg-blue-600 hover:bg-blue-500 font-semibold rounded-lg text-sm px-4 py-3 shadow-lg shadow-blue-900/20 active:scale-95 transition-all ${!canDownload ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+            className={`flex items-center justify-center gap-2 text-white bg-blue-600 hover:bg-blue-500 font-semibold rounded-lg text-xs md:text-sm px-3 py-2 md:px-4 md:py-3 active:scale-95 transition-all ${!canDownload ? 'opacity-40 grayscale cursor-not-allowed' : 'shadow-lg shadow-blue-900/20'}`}
             >
-            <Download size={16} /> SVG
+            <Download size={14} className="md:w-[16px] md:h-[16px]" /> SVG
             </button>
             <button
             onClick={onDownloadDxf}
             disabled={!canDownload}
-            className={`flex items-center justify-center gap-2 text-white bg-emerald-600 hover:bg-emerald-500 font-semibold rounded-lg text-sm px-4 py-3 shadow-lg shadow-emerald-900/20 active:scale-95 transition-all ${!canDownload ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+            className={`flex items-center justify-center gap-2 text-white bg-emerald-600 hover:bg-emerald-500 font-semibold rounded-lg text-xs md:text-sm px-3 py-2 md:px-4 md:py-3 active:scale-95 transition-all ${!canDownload ? 'opacity-40 grayscale cursor-not-allowed' : 'shadow-lg shadow-emerald-900/20'}`}
             >
-            <Download size={16} /> DXF
+            <Download size={14} className="md:w-[16px] md:h-[16px]" /> DXF
             </button>
         </div>
       </div>
-    </aside>
+    </div>
   );
 };
 
