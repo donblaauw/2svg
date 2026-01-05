@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import ControlPanel from './components/ControlPanel';
 import PreviewCanvas from './components/PreviewCanvas';
 import { AppSettings, MaskGrid } from './types';
@@ -29,7 +29,8 @@ function App() {
   const [hasMask, setHasMask] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
 
-  const handleImageUpload = (file: File) => {
+  // Reusable function to process a File or Blob image
+  const processImageFile = useCallback((file: File | Blob) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const img = new Image();
@@ -41,10 +42,34 @@ function App() {
       }
     };
     reader.readAsDataURL(file);
+  }, []);
+
+  const handleImageUpload = (file: File) => {
+    processImageFile(file);
   };
 
+  // Clipboard paste handler
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            processImageFile(blob);
+            break; // Process only the first image found
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [processImageFile]);
+
   const handleAiEdit = async (prompt: string) => {
-    // Fixed: Exclusively use process.env.API_KEY as per guidelines.
     if (!originalImage || !process.env.API_KEY) {
       if (!process.env.API_KEY) alert("Geen API Key gevonden. AI functies zijn niet beschikbaar.");
       return;
@@ -52,7 +77,6 @@ function App() {
     
     setIsAiProcessing(true);
     try {
-      // Fixed: Initialized GoogleGenAI with process.env.API_KEY directly as per guidelines.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const canvas = document.createElement('canvas');
@@ -82,7 +106,6 @@ function App() {
 
       let resultImageBase64 = '';
       if (response.candidates?.[0]?.content?.parts) {
-        // Find the image part from all candidates and parts as recommended.
         for (const part of response.candidates[0].content.parts) {
           if (part.inlineData) {
             resultImageBase64 = part.inlineData.data;

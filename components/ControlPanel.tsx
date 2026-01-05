@@ -82,7 +82,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
              <label className="flex flex-col items-center justify-center w-full h-14 md:h-28 border-2 border-neutral-600 border-dashed rounded-lg cursor-pointer bg-neutral-800/50 hover:bg-neutral-700/50 transition-all hover:border-blue-500/50">
                 <div className="flex flex-row md:flex-col items-center justify-center gap-2 md:pt-5 md:pb-6">
                   <Upload className="w-4 h-4 md:w-6 md:h-6 text-neutral-400 group-hover:text-blue-400 transition-colors" />
-                  <p className="text-[11px] md:text-sm text-neutral-400 font-medium">Tik voor upload</p>
+                  <p className="text-[11px] md:text-sm text-neutral-400 font-medium">Upload of plak afbeelding (Ctrl+V)</p>
                 </div>
                 <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
               </label>
