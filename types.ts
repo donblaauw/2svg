@@ -8,7 +8,9 @@ export interface AppSettings {
   stencilMode: boolean;
   bezierMode: boolean;
   bridgeWidth: number;
+  bridgeCount: number; // Target number of bridges for stability
   makerName: string;
+  orientation: 'portrait' | 'landscape';
 }
 
 export interface ImageDimensions {

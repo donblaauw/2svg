@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { AppSettings } from '../types';
-import { Upload, Download, Info, Image as ImageIcon, Scissors, Sliders, Layers, PenTool, ChevronDown, ChevronUp } from 'lucide-react';
+// Fixed: Replaced non-existent LayoutPortrait and LayoutLandscape with Smartphone and Monitor icons from lucide-react
+import { Upload, Download, Image as ImageIcon, Layers, PenTool, ChevronDown, ChevronUp, Smartphone, Monitor, Wand2, Sparkles, Loader2 } from 'lucide-react';
 
 interface ControlPanelProps {
   settings: AppSettings;
@@ -9,11 +10,13 @@ interface ControlPanelProps {
   onImageUpload: (file: File) => void;
   onDownloadSvg: () => void;
   onDownloadDxf: () => void;
+  onAiEdit: (prompt: string) => Promise<void>;
   canDownload: boolean;
   imageLoaded: boolean;
+  isAiProcessing: boolean;
 }
 
-const SectionHeader = ({ title, icon: Icon, isOpen, onClick }: any) => (
+const SectionHeader = ({ title, icon: Icon, isOpen, onClick, badge }: any) => (
   <button 
     onClick={onClick}
     className="flex items-center justify-between w-full p-3 md:p-4 text-left bg-neutral-800 hover:bg-neutral-750 transition-colors border-b border-neutral-700/50 shrink-0"
@@ -21,6 +24,11 @@ const SectionHeader = ({ title, icon: Icon, isOpen, onClick }: any) => (
     <div className="flex items-center gap-2 md:gap-3 text-neutral-200">
       <Icon size={16} className="text-blue-500 md:w-[18px] md:h-[18px]" />
       <span className="font-semibold text-xs md:text-sm">{title}</span>
+      {badge && (
+        <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-tighter border border-blue-500/30">
+          {badge}
+        </span>
+      )}
     </div>
     {isOpen ? <ChevronUp size={14} className="text-neutral-500 md:w-[16px] md:h-[16px]" /> : <ChevronDown size={14} className="text-neutral-500 md:w-[16px] md:h-[16px]" />}
   </button>
@@ -32,14 +40,18 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   onImageUpload,
   onDownloadSvg,
   onDownloadDxf,
+  onAiEdit,
   canDownload,
   imageLoaded,
+  isAiProcessing,
 }) => {
   const [openSections, setOpenSections] = useState({
+    ai: true,
     image: true,
     stencil: false,
-    vector: true
+    vector: false
   });
+  const [aiPrompt, setAiPrompt] = useState("");
 
   const toggleSection = (key: keyof typeof openSections) => {
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -55,12 +67,16 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
     }
   };
 
+  const handleAiSubmit = async () => {
+    if (!aiPrompt.trim() || isAiProcessing) return;
+    await onAiEdit(aiPrompt);
+    setAiPrompt("");
+  };
+
   return (
     <div className="flex flex-col h-full bg-neutral-800">
       
-      {/* Scrollable Body */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {/* Compact Upload area for mobile */}
         <div className="p-3 md:p-6 border-b border-neutral-700 space-y-3 md:space-y-5">
           <div className="relative group">
              <label className="flex flex-col items-center justify-center w-full h-14 md:h-28 border-2 border-neutral-600 border-dashed rounded-lg cursor-pointer bg-neutral-800/50 hover:bg-neutral-700/50 transition-all hover:border-blue-500/50">
@@ -84,7 +100,50 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
         </div>
 
-        {/* Section 1: Image Processing */}
+        {/* AI Section */}
+        <SectionHeader 
+            title="AI Bewerking" 
+            icon={Sparkles} 
+            isOpen={openSections.ai} 
+            onClick={() => toggleSection('ai')}
+            badge="Gemini 2.5"
+        />
+        {openSections.ai && (
+          <div className="p-4 md:p-5 space-y-3 bg-neutral-800/50 border-b border-neutral-700/30">
+            <p className="text-[10px] md:text-[11px] text-neutral-400 leading-relaxed italic">
+              Vraag Gemini om je afbeelding te bewerken. Bijv: "Voeg een retro filter toe" of "Verwijder de achtergrond".
+            </p>
+            <div className="relative">
+              <textarea
+                className="bg-neutral-900 border border-neutral-700 text-neutral-100 text-xs rounded-md focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500 block w-full p-2 h-20 placeholder-neutral-600 resize-none"
+                placeholder="Wat wil je doen?"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                disabled={!imageLoaded || isAiProcessing}
+              />
+              <button
+                onClick={handleAiSubmit}
+                disabled={!imageLoaded || isAiProcessing || !aiPrompt.trim()}
+                className={`mt-2 flex items-center justify-center gap-2 w-full py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                  imageLoaded && !isAiProcessing && aiPrompt.trim()
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
+                    : 'bg-neutral-700 text-neutral-500 cursor-not-allowed'
+                }`}
+              >
+                {isAiProcessing ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Magie gebeurt...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 size={14} /> Bewerking Uitvoeren
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
         <SectionHeader 
             title="Overtrekken" 
             icon={ImageIcon} 
@@ -93,6 +152,26 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         />
         {openSections.image && (
           <div className="p-4 md:p-5 space-y-4 md:space-y-5 bg-neutral-800/50 border-b border-neutral-700/30">
+             
+             {/* Orientation Selector */}
+             <div>
+              <label className="block mb-2 text-[10px] md:text-xs font-medium text-neutral-300">Document Oriëntatie</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => update('orientation', 'portrait')}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-md text-[10px] md:text-xs font-semibold transition-all border ${settings.orientation === 'portrait' ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20' : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:bg-neutral-750'}`}
+                >
+                  <Smartphone size={14} /> Portrait
+                </button>
+                <button
+                  onClick={() => update('orientation', 'landscape')}
+                  className={`flex items-center justify-center gap-2 py-2 px-3 rounded-md text-[10px] md:text-xs font-semibold transition-all border ${settings.orientation === 'landscape' ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/20' : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:bg-neutral-750'}`}
+                >
+                  <Monitor size={14} /> Landscape
+                </button>
+              </div>
+            </div>
+
              <div>
               <div className="flex justify-between mb-1.5">
                 <label className="text-[10px] md:text-xs font-medium text-neutral-300">Grootte (A3)</label>
@@ -140,7 +219,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
         )}
 
-        {/* Section 2: Stencil */}
         <SectionHeader 
             title="Stencil" 
             icon={Layers} 
@@ -158,23 +236,36 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
              </div>
              
              {settings.stencilMode && (
-                <div>
-                    <div className="flex justify-between mb-1.5">
-                        <label className="text-[10px] md:text-xs font-medium text-neutral-300">Brugbreedte</label>
-                        <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.bridgeWidth}</span>
+                <div className="space-y-4 pt-2">
+                    <div>
+                        <div className="flex justify-between mb-1.5">
+                            <label className="text-[10px] md:text-xs font-medium text-neutral-300">Brugbreedte</label>
+                            <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.bridgeWidth}</span>
+                        </div>
+                        <input 
+                            type="range" min="0" max="4" step="1"
+                            value={settings.bridgeWidth} 
+                            onChange={(e) => update('bridgeWidth', Number(e.target.value))}
+                            className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
                     </div>
-                    <input 
-                        type="range" min="0" max="4" step="1"
-                        value={settings.bridgeWidth} 
-                        onChange={(e) => update('bridgeWidth', Number(e.target.value))}
-                        className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                    />
+                    <div>
+                        <div className="flex justify-between mb-1.5">
+                            <label className="text-[10px] md:text-xs font-medium text-neutral-300">Aantal bruggen</label>
+                            <span className="text-[10px] md:text-xs font-mono text-blue-400">{settings.bridgeCount}</span>
+                        </div>
+                        <input 
+                            type="range" min="1" max="8" step="1"
+                            value={settings.bridgeCount} 
+                            onChange={(e) => update('bridgeCount', Number(e.target.value))}
+                            className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                    </div>
                 </div>
              )}
           </div>
         )}
 
-        {/* Section 3: Vector Output */}
         <SectionHeader 
             title="Vectorinstellingen" 
             icon={PenTool} 
@@ -207,7 +298,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
         )}
       </div>
 
-      {/* Fixed Footer with Downloads */}
       <div className="p-3 md:p-6 border-t border-neutral-700 bg-neutral-800/95 backdrop-blur shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.3)]">
         <div className="grid grid-cols-2 gap-2 md:gap-3">
             <button

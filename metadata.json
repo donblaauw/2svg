@@ -1,5 +1,5 @@
 {
-  "name": "Bitmap to SVG Converter",
-  "description": "Convert bitmap images to optimized SVG or DXF files for vinyl cutters and laser cutters with advanced stencil and bridge generation.",
+  "name": "Bitmap to SVG Converter with Gemini AI",
+  "description": "Convert bitmap images to optimized SVG or DXF files for vinyl cutters and laser cutters. Features advanced stencil generation and Gemini 2.5 Flash Image editing capabilities.",
   "requestFramePermissions": []
 }

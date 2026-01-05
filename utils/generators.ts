@@ -1,5 +1,5 @@
 
-import { A3_WIDTH, A3_HEIGHT } from '../constants';
+import { getA3Dimensions } from '../constants';
 import { MaskGrid, AppSettings } from '../types';
 import { extractAllContours, buildBezierPath, smoothContour, simplifyPolyline } from './processing';
 
@@ -16,23 +16,19 @@ export function simplifyPoints(points: number[][], maxPoints = 8000): number[][]
 
 export function buildSvgFromMask(mask: MaskGrid, settings: AppSettings): string {
   if (!mask) return '';
+  const { width: docW, height: docH } = getA3Dimensions(settings.orientation);
   const internalH = mask.length;
   const internalW = mask[0].length;
   
   let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${A3_WIDTH}" height="${A3_HEIGHT}" viewBox="0 0 ${A3_WIDTH} ${A3_HEIGHT}" shape-rendering="geometricPrecision">\n`;
+<svg xmlns="http://www.w3.org/2000/svg" width="${docW}" height="${docH}" viewBox="0 0 ${docW} ${docH}" shape-rendering="geometricPrecision">\n`;
 
-  // Always use vector strokes for export to avoid jagged edges
-  // Changed stroke color to RED (#ff0000) for cutting lines
   svg += '  <g fill="none" stroke="#ff0000" stroke-width="0.8" stroke-linejoin="round" stroke-linecap="round">\n';
 
-  const contours = extractAllContours(mask, internalW, internalH);
-  
-  // Pass the raw setting. 0 means geometric/sharp.
+  const contours = extractAllContours(mask, internalW, internalH, docW, docH);
   const effectiveSmoothing = Math.max(settings.vectorSmoothing, 0.5);
 
   for (const contour of contours) {
-    // Use very high maxPoints (8000) for SVG export to ensure ultra smooth high-res curves
     const path = buildBezierPath(contour, 8000, effectiveSmoothing);
     if (path) {
       svg += `    <path d="${path}" />\n`;
@@ -43,15 +39,14 @@ export function buildSvgFromMask(mask: MaskGrid, settings: AppSettings): string 
   return svg;
 }
 
-export function buildDxfFromMask(mask: MaskGrid, settings?: AppSettings): string {
+export function buildDxfFromMask(mask: MaskGrid, settings: AppSettings): string {
   if (!mask) return '';
+  const { width: docW, height: docH } = getA3Dimensions(settings.orientation);
   const internalH = mask.length;
   const internalW = mask[0].length;
-  
-  // Pass raw setting
-  const vectorSmoothing = settings?.vectorSmoothing ?? 0;
+  const vectorSmoothing = settings.vectorSmoothing ?? 0;
 
-  const contours = extractAllContours(mask, internalW, internalH);
+  const contours = extractAllContours(mask, internalW, internalH, docW, docH);
   if (!contours.length) return '';
 
   let dxf = `0
@@ -71,21 +66,17 @@ ENTITIES
 `;
 
   for (const contour of contours) {
-    // 1. Simplify pixel steps
     let processed = contour;
     if (vectorSmoothing > 0) {
-       // Only simplify aggressively if smoothing is requested
        const epsilon = 0.5 + (vectorSmoothing * 0.2);
        processed = simplifyPolyline(processed, epsilon);
     }
 
-    // 2. Chaikin Smooth (Only if > 0)
     const iterations = Math.ceil(vectorSmoothing / 2); 
     if (iterations > 0) {
       processed = smoothContour(processed, iterations);
     }
     
-    // 3. Simplify for DXF but keep ULTRA high resolution
     const pts = simplifyPoints(processed, 8000);
     
     if (pts.length < 2) continue;
@@ -103,7 +94,7 @@ POLYLINE
 `;
     for (const [x, y] of pts) {
       const dx = x.toFixed(3);
-      const dy = (A3_HEIGHT - y).toFixed(3); 
+      const dy = (docH - y).toFixed(3); 
       dxf += `0
 VERTEX
 8
