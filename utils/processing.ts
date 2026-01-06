@@ -8,7 +8,6 @@ const norm = (a: number[]) => {
   const l = Math.sqrt(a[0] * a[0] + a[1] * a[1]);
   return l === 0 ? [0, 0] : [a[0] / l, a[1] / l];
 };
-const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1];
 
 function perpendicularDistance(p: number[], v: number[], w: number[]) {
   const l2 = Math.pow(dist(v, w), 2);
@@ -82,63 +81,55 @@ export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoo
   return d;
 }
 
-export function extractContour(mask: MaskGrid, w: number, h: number, docWidth: number, docHeight: number): number[][] {
-  let startX = -1, startY = -1;
-  outer: for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (mask[y][x]) { startX = x; startY = y; break outer; }
-    }
-  }
-  if (startX === -1) return [];
-  const dirs = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+export function extractContourFromLabel(labels: Int32Array, labelId: number, startX: number, startY: number, w: number, h: number, docWidth: number, docHeight: number): number[][] {
+  const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
   let contour: number[][] = [];
   let cx = startX, cy = startY, dir = 0;
-  let safety = w * h * 4; 
+  let safety = w * h;
+  
   do {
     contour.push([cx, cy]);
     let found = false;
     for (let i = 0; i < 8; i++) {
       const nd = (dir + 7 + i) % 8;
       const nx = cx + dirs[nd][0], ny = cy + dirs[nd][1];
-      if (nx >= 0 && ny >= 0 && nx < w && ny < h && mask[ny][nx]) {
+      if (nx >= 0 && ny >= 0 && nx < w && ny < h && labels[ny * w + nx] === labelId) {
         cx = nx; cy = ny; dir = nd; found = true; break;
       }
     }
     if (!found || --safety <= 0) break;
   } while (!(cx === startX && cy === startY && contour.length > 1));
+
   const sx = docWidth / w, sy = docHeight / h;
-  return contour.map(([px, py]) => [ (px+0.5)*sx, (py+0.5)*sy ]);
+  return contour.map(([px, py]) => [(px + 0.5) * sx, (py + 0.5) * sy]);
 }
 
 export function extractAllContours(mask: MaskGrid, w: number, h: number, docWidth: number, docHeight: number): number[][][] {
   if (!mask) return [];
-  const visited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-  const labels: number[][] = Array.from({ length: h }, () => Array(w).fill(0));
-  const contours: number[][][] = [];
+  const labels = new Int32Array(w * h).fill(-1);
   let currentLabel = 0;
-  for (let sy = 0; sy < h; sy++) {
-    for (let sx = 0; sx < w; sx++) {
-      if (!mask[sy][sx] || visited[sy][sx]) continue;
-      currentLabel++;
-      const q: [number, number][] = [[sx, sy]];
-      visited[sy][sx] = true; labels[sy][sx] = currentLabel;
-      let head = 0;
-      while (head < q.length) {
-        const [cx, cy] = q[head++];
-        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-          const nx = cx + dx, ny = cy + dy;
-          if (nx >= 0 && ny >= 0 && nx < w && ny < h && !visited[ny][nx] && mask[ny][nx]) {
-            visited[ny][nx] = true; labels[ny][nx] = currentLabel; q.push([nx, ny]);
+  const contours: number[][][] = [];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (mask[y][x] && labels[y * w + x] === -1) {
+        const q: [number, number][] = [[x, y]];
+        labels[y * w + x] = currentLabel;
+        let head = 0;
+        while (head < q.length) {
+          const [cx, cy] = q[head++];
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx >= 0 && ny >= 0 && nx < w && ny < h && mask[ny][nx] && labels[ny * w + nx] === -1) {
+              labels[ny * w + nx] = currentLabel;
+              q.push([nx, ny]);
+            }
           }
         }
+        contours.push(extractContourFromLabel(labels, currentLabel, x, y, w, h, docWidth, docHeight));
+        currentLabel++;
       }
     }
-  }
-  for (let l = 1; l <= currentLabel; l++) {
-    const subMask: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (labels[y][x] === l) subMask[y][x] = true;
-    const c = extractContour(subMask, w, h, docWidth, docHeight);
-    if (c.length >= 3) contours.push(c);
   }
   return contours;
 }
@@ -146,10 +137,10 @@ export function extractAllContours(mask: MaskGrid, w: number, h: number, docWidt
 export function smoothMask(mask: MaskGrid, w: number, h: number, iterations: number) {
   for (let it = 0; it < iterations; it++) {
     const next: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-    for (let y = 1; y < h-1; y++) {
-      for (let x = 1; x < w-1; x++) {
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
         let cnt = 0;
-        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (mask[y+dy][x+dx]) cnt++;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (mask[y + dy][x + dx]) cnt++;
         next[y][x] = cnt >= 5;
       }
     }
@@ -157,91 +148,232 @@ export function smoothMask(mask: MaskGrid, w: number, h: number, iterations: num
   }
 }
 
-export function postProcessMask(mask: MaskGrid, w: number, h: number, settings: { stencilMode: boolean, bridgeWidth: number, bridgeCount: number }) {
-  const bgConnected: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-  const flood = (sx: number, sy: number) => {
-    if (mask[sy][sx] || bgConnected[sy][sx]) return;
-    const q: [number, number][] = [[sx, sy]];
-    bgConnected[sy][sx] = true;
-    let head = 0;
-    while(head < q.length) {
-      const [cx, cy] = q[head++];
-      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-        const nx = cx + dx, ny = cy + dy;
-        if (nx >= 0 && ny >= 0 && nx < w && ny < h && !mask[ny][nx] && !bgConnected[ny][nx]) {
-          bgConnected[ny][nx] = true; q.push([nx, ny]);
+/**
+ * Tekent een dikke lijn in het masker (wit maken)
+ */
+function drawThickLine(mask: MaskGrid, x1: number, y1: number, x2: number, y2: number, width: number, w: number, h: number) {
+  const dX = x2 - x1;
+  const dY = y2 - y1;
+  const steps = Math.max(Math.abs(dX), Math.abs(dY), 1) * 2;
+  const rSq = Math.max(1, width * width);
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const px = Math.round(x1 + t * dX);
+    const py = Math.round(y1 + t * dY);
+    for (let ry = -width; ry <= width; ry++) {
+      for (let rx = -width; rx <= width; rx++) {
+        if (rx * rx + ry * ry <= rSq) {
+          const ox = px + rx, oy = py + ry;
+          if (ox >= 0 && oy >= 0 && ox < w && oy < h) {
+            mask[oy][ox] = false;
+          }
         }
       }
     }
-  };
-  for (let x = 0; x < w; x++) { flood(x, 0); flood(x, h-1); }
-  for (let y = 0; y < h; y++) { flood(0, y); flood(w-1, y); }
+  }
+}
+
+export function postProcessMask(mask: MaskGrid, w: number, h: number, settings: { stencilMode: boolean, bridgeWidth: number, bridgeCount: number, manualBridges?: {x: number, y: number}[] }) {
+  // 1. Handmatige bruggen altijd eerst, deze forceren verbindingen
+  if (settings.manualBridges && settings.manualBridges.length > 0) {
+    const bw = Math.max(1, settings.bridgeWidth);
+    
+    settings.manualBridges.forEach(bridge => {
+      const bx = Math.round(bridge.x);
+      const by = Math.round(bridge.y);
+      if (bx < 0 || bx >= w || by < 0 || by >= h) return;
+
+      // Als we al op een wit vlak klikken, doen we een kleine cirkel als bridge (als markering)
+      if (!mask[by][bx]) {
+        drawThickLine(mask, bx, by, bx, by, bw, w, h);
+        return;
+      }
+
+      // Zoek de kortste overspanning over het zwart door het klikpunt
+      let minTotalDist = Infinity;
+      let bestP1 = [bx, by];
+      let bestP2 = [bx, by];
+
+      // Cast 12 hoeken (360 graden / 12 = elke 30 graden) voor hogere precisie
+      for (let i = 0; i < 12; i++) {
+        const angle = (i * Math.PI) / 12;
+        const dx = Math.cos(angle);
+        const dy = Math.sin(angle);
+
+        // Straal richting A
+        let p1 = [bx, by];
+        let d1 = 0;
+        while (true) {
+          const tx = Math.round(bx + dx * d1);
+          const ty = Math.round(by + dy * d1);
+          if (tx < 0 || tx >= w || ty < 0 || ty >= h) break;
+          if (!mask[ty][tx]) { p1 = [tx, ty]; break; }
+          d1++;
+          if (d1 > 200) break; // Verhoogde limiet voor grotere overspanningen
+        }
+
+        // Straal richting B (tegenovergesteld)
+        let p2 = [bx, by];
+        let d2 = 0;
+        while (true) {
+          const tx = Math.round(bx - dx * d2);
+          const ty = Math.round(by - dy * d2);
+          if (tx < 0 || tx >= w || ty < 0 || ty >= h) break;
+          if (!mask[ty][tx]) { p2 = [tx, ty]; break; }
+          d2++;
+          if (d2 > 200) break;
+        }
+
+        const totalDist = d1 + d2;
+        if (totalDist < minTotalDist) {
+          minTotalDist = totalDist;
+          bestP1 = p1;
+          bestP2 = p2;
+        }
+      }
+
+      // De brug overspant nu de VOLLEDIGE afstand tussen de twee dichtstbijzijnde witte grenzen
+      drawThickLine(mask, bestP1[0], bestP1[1], bestP2[0], bestP2[1], bw, w, h);
+    });
+  }
 
   if (!settings.stencilMode) return;
 
-  const islandVisited: boolean[][] = Array.from({ length: h }, () => Array(w).fill(false));
-  const islands: { pixels: [number, number][], boundary: [number, number][] }[] = [];
+  // De rest van de automatische stencil logica (onveranderd)
+  const NEIGHBORS_4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const NEIGHBORS_8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+  const labels = new Int32Array(w * h).fill(-1);
+  let labelCount = 0;
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (mask[y][x] || bgConnected[y][x] || islandVisited[y][x]) continue;
-      const pixels: [number, number][] = [], boundary: [number, number][] = [], q: [number, number][] = [[x, y]];
-      islandVisited[y][x] = true;
-      let head = 0;
-      while(head < q.length) {
-        const [cx, cy] = q[head++];
-        pixels.push([cx, cy]);
-        let isB = false;
-        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-          const nx = cx + dx, ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h || mask[ny][nx]) isB = true;
-          else if (!islandVisited[ny][nx] && !bgConnected[ny][nx]) { islandVisited[ny][nx] = true; q.push([nx, ny]); }
-        }
-        if (isB) boundary.push([cx, cy]);
-      }
-      if (pixels.length < 20) pixels.forEach(([px, py]) => mask[py][px] = true);
-      else islands.push({ pixels, boundary });
-    }
-  }
-
-  if (islands.length === 0 || settings.bridgeWidth <= 0) return;
-  const distF = new Int32Array(w * h).fill(-1), dq: [number, number][] = [];
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (bgConnected[y][x]) { distF[y*w+x] = 0; dq.push([x,y]); }
-  let dh = 0;
-  while(dh < dq.length) {
-    const [cx, cy] = dq[dh++];
-    const d = distF[cy*w+cx];
-    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-      const nx = cx+dx, ny = cy+dy;
-      if (nx >= 0 && ny >= 0 && nx < w && ny < h && distF[ny*w+nx] === -1) { distF[ny*w+nx] = d+1; dq.push([nx,ny]); }
-    }
-  }
-
-  islands.forEach(isl => {
-    const n = Math.max(1, Math.min(settings.bridgeCount, Math.floor(isl.boundary.length / 20)));
-    const step = Math.floor(isl.boundary.length / n);
-    for (let i = 0; i < n; i++) {
-      let bestP: [number, number] | null = null, minD = Infinity;
-      for (let j = i*step; j < (i+1)*step; j++) {
-        const [px, py] = isl.boundary[j];
-        if (distF[py*w+px] < minD) { minD = distF[py*w+px]; bestP = [px, py]; }
-      }
-      if (bestP) {
-        let [cx, cy] = bestP;
-        while(distF[cy*w+cx] > 0) {
-          const bw = settings.bridgeWidth;
-          for (let dy = -bw; dy <= bw; dy++) for (let dx = -bw; dx <= bw; dx++) {
-            const ox = cx+dx, oy = cy+dy;
-            if (ox>=0 && oy>=0 && ox<w && oy<h && dx*dx+dy*dy <= bw*bw) mask[oy][ox] = false;
+      if (!mask[y][x] && labels[y * w + x] === -1) {
+        const q: [number, number][] = [[x, y]];
+        labels[y * w + x] = labelCount;
+        let head = 0;
+        while (head < q.length) {
+          const [cx, cy] = q[head++];
+          for (const [dx, dy] of NEIGHBORS_4) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx >= 0 && ny >= 0 && nx < w && ny < h && !mask[ny][nx] && labels[ny * w + nx] === -1) {
+              labels[ny * w + nx] = labelCount;
+              q.push([nx, ny]);
+            }
           }
-          let nextP: [number, number] = [cx, cy], dNext = distF[cy*w+cx];
-          for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-            const nx = cx+dx, ny = cy+dy;
-            if (nx >= 0 && ny >= 0 && nx < w && ny < h && distF[ny*w+nx] !== -1 && distF[ny*w+nx] < dNext) { dNext = distF[ny*w+nx]; nextP = [nx, ny]; }
+        }
+        labelCount++;
+      }
+    }
+  }
+
+  if (labelCount === 0) return;
+
+  const safeLabels = new Set<number>();
+  for (let x = 0; x < w; x++) {
+    if (labels[x] !== -1) safeLabels.add(labels[x]);
+    if (labels[(h - 1) * w + x] !== -1) safeLabels.add(labels[(h - 1) * w + x]);
+  }
+  for (let y = 0; y < h; y++) {
+    if (labels[y * w] !== -1) safeLabels.add(labels[y * w]);
+    if (labels[y * w + (w - 1)] !== -1) safeLabels.add(labels[y * w + (w - 1)]);
+  }
+
+  const islands: { label: number, boundary: [number, number][] }[] = [];
+  const labelToBoundary = new Map<number, [number, number][]>();
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const lbl = labels[y * w + x];
+      if (lbl !== -1 && !safeLabels.has(lbl)) {
+        let isBoundary = false;
+        for (const [dx, dy] of NEIGHBORS_4) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h || mask[ny][nx]) { isBoundary = true; break; }
+        }
+        if (isBoundary) {
+          if (!labelToBoundary.has(lbl)) labelToBoundary.set(lbl, []);
+          labelToBoundary.get(lbl)!.push([x, y]);
+        }
+      }
+    }
+  }
+  labelToBoundary.forEach((boundary, label) => islands.push({ label, boundary }));
+
+  while (islands.length > 0) {
+    const distF = new Int32Array(w * h).fill(-1);
+    const dq: [number, number][] = [];
+    
+    for (let i = 0; i < w * h; i++) {
+      if (labels[i] !== -1 && safeLabels.has(labels[i])) {
+        distF[i] = 0;
+        dq.push([i % w, Math.floor(i / w)]);
+      }
+    }
+
+    let head = 0;
+    while (head < dq.length) {
+      const [cx, cy] = dq[head++];
+      const d = distF[cy * w + cx];
+      for (const [dx, dy] of NEIGHBORS_8) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx >= 0 && ny >= 0 && nx < w && ny < h && distF[ny * w + nx] === -1) {
+          distF[ny * w + nx] = d + 1;
+          dq.push([nx, ny]);
+        }
+      }
+    }
+
+    let bestIslandIdx = -1;
+    let minD = Infinity;
+    for (let i = 0; i < islands.length; i++) {
+      for (const pt of islands[i].boundary) {
+        const d = distF[pt[1] * w + pt[0]];
+        if (d !== -1 && d < minD) {
+          minD = d;
+          bestIslandIdx = i;
+        }
+      }
+    }
+
+    if (bestIslandIdx === -1) break;
+
+    const targetIsland = islands[bestIslandIdx];
+    const n = Math.max(1, Math.min(settings.bridgeCount, Math.floor(targetIsland.boundary.length / 20)));
+    const step = Math.floor(targetIsland.boundary.length / n);
+
+    for (let b = 0; b < n; b++) {
+      let currentMinD = Infinity;
+      let startP: [number, number] | null = null;
+      for (let k = b * step; k < (b + 1) * step; k++) {
+        const pt = targetIsland.boundary[k];
+        const d = distF[pt[1] * w + pt[0]];
+        if (d !== -1 && d < currentMinD) {
+          currentMinD = d;
+          startP = pt;
+        }
+      }
+
+      if (startP) {
+        let [cx, cy] = startP;
+        while (distF[cy * w + cx] > 0) {
+          const bw = settings.bridgeWidth;
+          drawThickLine(mask, cx, cy, cx, cy, bw, w, h);
+          let nextP: [number, number] = [cx, cy];
+          let dNext = distF[cy * w + cx];
+          for (const [dx, dy] of NEIGHBORS_8) {
+            const nx = cx + dx, ny = cy + dy;
+            if (nx >= 0 && ny >= 0 && nx < w && ny < h && distF[ny * w + nx] !== -1 && distF[ny * w + nx] < dNext) {
+              dNext = distF[ny * w + nx];
+              nextP = [nx, ny];
+            }
           }
           if (nextP[0] === cx && nextP[1] === cy) break;
           [cx, cy] = nextP;
         }
       }
     }
-  });
+    safeLabels.add(targetIsland.label);
+    islands.splice(bestIslandIdx, 1);
+  }
 }

@@ -10,8 +10,8 @@ import { GoogleGenAI } from "@google/genai";
 
 const DEFAULT_SETTINGS: AppSettings = {
   threshold: 140,
-  scale: 60,
-  imageSize: 60,
+  scale: 90,
+  imageSize: 90,
   smooth: 1, 
   vectorSmoothing: 1,
   stencilMode: true,
@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   bridgeCount: 2,
   makerName: '',
   orientation: 'portrait',
+  manualBridges: []
 };
 
 function App() {
@@ -36,6 +37,8 @@ function App() {
       const img = new Image();
       img.onload = () => {
         setOriginalImage(img);
+        // Reset handmatige bruggen bij nieuwe afbeelding
+        setSettings(prev => ({ ...prev, manualBridges: [] }));
       };
       if (ev.target?.result) {
         img.src = ev.target.result as string;
@@ -119,6 +122,8 @@ function App() {
         newImg.onload = () => {
           setOriginalImage(newImg);
           setIsAiProcessing(false);
+          // Reset manual bridges on major AI edit
+          setSettings(prev => ({ ...prev, manualBridges: [] }));
         };
         newImg.src = `data:image/png;base64,${resultImageBase64}`;
       } else {
@@ -134,6 +139,26 @@ function App() {
   const handleMaskReady = useCallback((mask: MaskGrid) => {
     maskRef.current = mask;
     setHasMask(true);
+  }, []);
+
+  const handleManualBridgeToggle = useCallback((x: number, y: number) => {
+    setSettings(prev => {
+        // Zoek of er al een brug dichtbij is (binnen 5 units op de mask grid)
+        const threshold = 5;
+        const existingIdx = prev.manualBridges.findIndex(b => 
+            Math.sqrt(Math.pow(b.x - x, 2) + Math.pow(b.y - y, 2)) < threshold
+        );
+
+        if (existingIdx > -1) {
+            // Verwijderen
+            const next = [...prev.manualBridges];
+            next.splice(existingIdx, 1);
+            return { ...prev, manualBridges: next };
+        } else {
+            // Toevoegen
+            return { ...prev, manualBridges: [...prev.manualBridges, { x, y }] };
+        }
+    });
   }, []);
 
   const getCleanFilename = (ext: string) => {
@@ -206,7 +231,7 @@ function App() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-4 text-xs font-medium text-neutral-500">
-             <span>v2.3.1</span>
+             <span>v2.4.0</span>
              <span className="w-1 h-1 bg-neutral-700 rounded-full"/>
              <span className="flex items-center gap-1.5"><Sparkles size={12} className="text-blue-400" /> AI Powered</span>
           </div>
@@ -221,6 +246,7 @@ function App() {
                   settings={settings}
                   onMaskReady={handleMaskReady}
                   onToggleViewMode={() => setSettings(prev => ({ ...prev, bezierMode: !prev.bezierMode }))}
+                  onManualBridgeToggle={handleManualBridgeToggle}
                 />
                 
                 <div className="absolute top-4 left-4 flex gap-2 pointer-events-none">

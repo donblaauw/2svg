@@ -3,16 +3,23 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { AppSettings, MaskGrid } from '../types';
 import { getA3Dimensions } from '../constants';
 import { postProcessMask, smoothMask, extractAllContours, buildBezierPath } from '../utils/processing';
-import { ZoomIn, ZoomOut, Maximize, ScanLine, Image as ImageIcon } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, ScanLine, Image as ImageIcon, MousePointer2 } from 'lucide-react';
 
 interface PreviewCanvasProps {
   originalImage: HTMLImageElement | null;
   settings: AppSettings;
   onMaskReady: (mask: MaskGrid) => void;
   onToggleViewMode?: () => void;
+  onManualBridgeToggle?: (x: number, y: number) => void;
 }
 
-const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, onMaskReady, onToggleViewMode }) => {
+const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ 
+  originalImage, 
+  settings, 
+  onMaskReady, 
+  onToggleViewMode,
+  onManualBridgeToggle 
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -27,6 +34,8 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
 
   const isDragging = useRef(false);
   const lastMousePos = useRef<{ x: number, y: number } | null>(null);
+  const startMousePos = useRef<{ x: number, y: number } | null>(null);
+
   const touchState = useRef({
     dist: 0,
     kStart: 1,
@@ -119,7 +128,8 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
         postProcessMask(bwMask, internalW, internalH, { 
           stencilMode: settings.stencilMode, 
           bridgeWidth: settings.bridgeWidth,
-          bridgeCount: settings.bridgeCount 
+          bridgeCount: settings.bridgeCount,
+          manualBridges: settings.manualBridges
         });
         
         if (settings.smooth > 0) smoothMask(bwMask, internalW, internalH, settings.smooth);
@@ -231,6 +241,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
   const handleMouseDown = (e: React.MouseEvent) => {
     isDragging.current = true;
     lastMousePos.current = { x: e.clientX, y: e.clientY };
+    startMousePos.current = { x: e.clientX, y: e.clientY };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -241,7 +252,33 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
     lastMousePos.current = { x: e.clientX, y: e.clientY };
   };
 
-  const handleMouseUp = () => { isDragging.current = false; lastMousePos.current = null; };
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (isDragging.current && startMousePos.current) {
+        const distMoved = Math.sqrt(Math.pow(e.clientX - startMousePos.current.x, 2) + Math.pow(e.clientY - startMousePos.current.y, 2));
+        if (distMoved < 4 && onManualBridgeToggle && containerRef.current) {
+            // Dit was een klik, geen sleep
+            const rect = containerRef.current.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+            
+            // Transformeer scherm-coördinaten naar document-coördinaten
+            const docX = (clickX - transform.x) / transform.k;
+            const docY = (clickY - transform.y) / transform.k;
+            
+            // Transformeer document-coördinaten naar mask-coördinaten
+            const internalScale = settings.scale / 100;
+            const maskX = (docX / docW) * Math.round(docW * internalScale);
+            const maskY = (docY / docH) * Math.round(docH * internalScale);
+            
+            if (maskX >= 0 && maskX < Math.round(docW * internalScale) && maskY >= 0 && maskY < Math.round(docH * internalScale)) {
+                onManualBridgeToggle(maskX, maskY);
+            }
+        }
+    }
+    isDragging.current = false; 
+    lastMousePos.current = null;
+    startMousePos.current = null;
+  };
 
   const getTouchDist = (t1: React.Touch, t2: React.Touch) => {
     const dx = t1.clientX - t2.clientX;
@@ -253,6 +290,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
     if (e.touches.length === 1) {
       isDragging.current = true;
       lastMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      startMousePos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     } else if (e.touches.length === 2) {
       isDragging.current = false;
       touchState.current = {
@@ -302,17 +340,24 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({ originalImage, settings, 
     <div className="relative w-full h-full bg-neutral-900 overflow-hidden select-none touch-none group">
       <div 
         ref={containerRef}
-        className="w-full h-full touch-none"
+        className="w-full h-full touch-none cursor-crosshair"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={() => { isDragging.current = false; lastMousePos.current = null; }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleMouseUp}
       >
         <canvas ref={canvasRef} className="block w-full h-full" />
+      </div>
+
+      <div className="absolute top-4 right-4 flex flex-col gap-2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+         <div className="bg-neutral-900/80 backdrop-blur px-3 py-1.5 rounded-full border border-neutral-700 flex items-center gap-2 text-neutral-300 text-[10px]">
+           <MousePointer2 size={12} />
+           <span>Klik om handmatig een brug te plaatsen/verwijderen</span>
+         </div>
       </div>
 
       <div className="absolute bottom-6 right-6 flex flex-col gap-2 pointer-events-none">

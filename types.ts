@@ -11,6 +11,7 @@ export interface AppSettings {
   bridgeCount: number; // Target number of bridges for stability
   makerName: string;
   orientation: 'portrait' | 'landscape';
+  manualBridges: { x: number; y: number }[];
 }
 
 export interface ImageDimensions {
