@@ -12,6 +12,9 @@ export interface AppSettings {
   makerName: string;
   orientation: 'portrait' | 'landscape';
   manualBridges: { x: number; y: number }[];
+  activeTool: 'pointer' | 'eraser';
+  brushSize: number;
+  erasedPaths: { points: { x: number; y: number }[]; size: number }[];
 }
 
 export interface ImageDimensions {

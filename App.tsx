@@ -20,7 +20,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   bridgeCount: 2,
   makerName: '',
   orientation: 'portrait',
-  manualBridges: []
+  manualBridges: [],
+  activeTool: 'pointer',
+  brushSize: 5,
+  erasedPaths: []
 };
 
 function App() {
@@ -30,6 +33,41 @@ function App() {
   const [hasMask, setHasMask] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
 
+  // History for Undo/Redo of erasedPaths
+  const [history, setHistory] = useState<any[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  useEffect(() => {
+    // Initial history state
+    setHistory([[]]);
+    setHistoryIndex(0);
+  }, []);
+
+  const pushHistory = useCallback((paths: any[]) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(JSON.parse(JSON.stringify(paths)));
+    // Keep last 30 states
+    if (newHistory.length > 30) newHistory.shift();
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  }, [history, historyIndex]);
+
+  const handleUndo = useCallback(() => {
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      setSettings(prev => ({ ...prev, erasedPaths: JSON.parse(JSON.stringify(history[prevIndex])) }));
+      setHistoryIndex(prevIndex);
+    }
+  }, [history, historyIndex]);
+
+  const handleRedo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      setSettings(prev => ({ ...prev, erasedPaths: JSON.parse(JSON.stringify(history[nextIndex])) }));
+      setHistoryIndex(nextIndex);
+    }
+  }, [history, historyIndex]);
+
   // Reusable function to process a File or Blob image
   const processImageFile = useCallback((file: File | Blob) => {
     const reader = new FileReader();
@@ -37,8 +75,9 @@ function App() {
       const img = new Image();
       img.onload = () => {
         setOriginalImage(img);
-        // Reset handmatige bruggen bij nieuwe afbeelding
-        setSettings(prev => ({ ...prev, manualBridges: [] }));
+        setSettings(prev => ({ ...prev, manualBridges: [], erasedPaths: [] }));
+        setHistory([[]]);
+        setHistoryIndex(0);
       };
       if (ev.target?.result) {
         img.src = ev.target.result as string;
@@ -122,8 +161,9 @@ function App() {
         newImg.onload = () => {
           setOriginalImage(newImg);
           setIsAiProcessing(false);
-          // Reset manual bridges on major AI edit
-          setSettings(prev => ({ ...prev, manualBridges: [] }));
+          setSettings(prev => ({ ...prev, manualBridges: [], erasedPaths: [] }));
+          setHistory([[]]);
+          setHistoryIndex(0);
         };
         newImg.src = `data:image/png;base64,${resultImageBase64}`;
       } else {
@@ -143,23 +183,26 @@ function App() {
 
   const handleManualBridgeToggle = useCallback((x: number, y: number) => {
     setSettings(prev => {
-        // Zoek of er al een brug dichtbij is (binnen 5 units op de mask grid)
+        // x and y are now in document mm. Threshold is 5mm.
         const threshold = 5;
         const existingIdx = prev.manualBridges.findIndex(b => 
             Math.sqrt(Math.pow(b.x - x, 2) + Math.pow(b.y - y, 2)) < threshold
         );
 
         if (existingIdx > -1) {
-            // Verwijderen
             const next = [...prev.manualBridges];
             next.splice(existingIdx, 1);
             return { ...prev, manualBridges: next };
         } else {
-            // Toevoegen
             return { ...prev, manualBridges: [...prev.manualBridges, { x, y }] };
         }
     });
   }, []);
+
+  const handleErasedPathsUpdate = useCallback((newPaths: any[]) => {
+    setSettings(prev => ({ ...prev, erasedPaths: newPaths }));
+    pushHistory(newPaths);
+  }, [pushHistory]);
 
   const getCleanFilename = (ext: string) => {
     const cleanName = settings.makerName.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'export';
@@ -244,9 +287,15 @@ function App() {
                 <PreviewCanvas 
                   originalImage={originalImage} 
                   settings={settings}
+                  onSettingsChange={setSettings}
                   onMaskReady={handleMaskReady}
                   onToggleViewMode={() => setSettings(prev => ({ ...prev, bezierMode: !prev.bezierMode }))}
                   onManualBridgeToggle={handleManualBridgeToggle}
+                  onErasedPathsUpdate={handleErasedPathsUpdate}
+                  onUndo={handleUndo}
+                  onRedo={handleRedo}
+                  canUndo={historyIndex > 0}
+                  canRedo={historyIndex < history.length - 1}
                 />
                 
                 <div className="absolute top-4 left-4 flex gap-2 pointer-events-none">

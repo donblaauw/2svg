@@ -126,7 +126,10 @@ export function extractAllContours(mask: MaskGrid, w: number, h: number, docWidt
             }
           }
         }
-        contours.push(extractContourFromLabel(labels, currentLabel, x, y, w, h, docWidth, docHeight));
+        // PERFORMANCE: Sla kleine ruis-pixels over (minder dan 5 pixels aaneengesloten)
+        if (q.length > 4) {
+          contours.push(extractContourFromLabel(labels, currentLabel, x, y, w, h, docWidth, docHeight));
+        }
         currentLabel++;
       }
     }
@@ -155,13 +158,13 @@ function drawThickLine(mask: MaskGrid, x1: number, y1: number, x2: number, y2: n
   const dX = x2 - x1;
   const dY = y2 - y1;
   const steps = Math.max(Math.abs(dX), Math.abs(dY), 1) * 2;
-  const rSq = Math.max(1, width * width);
+  const rSq = Math.max(0.5, width * width);
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const px = Math.round(x1 + t * dX);
     const py = Math.round(y1 + t * dY);
-    for (let ry = -width; ry <= width; ry++) {
-      for (let rx = -width; rx <= width; rx++) {
+    for (let ry = -Math.ceil(width); ry <= Math.ceil(width); ry++) {
+      for (let rx = -Math.ceil(width); rx <= Math.ceil(width); rx++) {
         if (rx * rx + ry * ry <= rSq) {
           const ox = px + rx, oy = py + ry;
           if (ox >= 0 && oy >= 0 && ox < w && oy < h) {
@@ -173,8 +176,28 @@ function drawThickLine(mask: MaskGrid, x1: number, y1: number, x2: number, y2: n
   }
 }
 
-export function postProcessMask(mask: MaskGrid, w: number, h: number, settings: { stencilMode: boolean, bridgeWidth: number, bridgeCount: number, manualBridges?: {x: number, y: number}[] }) {
-  // 1. Handmatige bruggen altijd eerst, deze forceren verbindingen
+export function postProcessMask(mask: MaskGrid, w: number, h: number, settings: { 
+  stencilMode: boolean, 
+  bridgeWidth: number, 
+  bridgeCount: number, 
+  manualBridges?: {x: number, y: number}[],
+  erasedPaths?: { points: {x: number, y: number}[], size: number }[]
+}) {
+  // 1. Handmatige gum-paden toepassen
+  if (settings.erasedPaths) {
+    settings.erasedPaths.forEach(path => {
+      if (path.points.length === 0) return;
+      if (path.points.length === 1) {
+        drawThickLine(mask, path.points[0].x, path.points[0].y, path.points[0].x, path.points[0].y, path.size, w, h);
+      } else {
+        for (let i = 0; i < path.points.length - 1; i++) {
+          drawThickLine(mask, path.points[i].x, path.points[i].y, path.points[i + 1].x, path.points[i + 1].y, path.size, w, h);
+        }
+      }
+    });
+  }
+
+  // 2. Handmatige bruggen toepassen
   if (settings.manualBridges && settings.manualBridges.length > 0) {
     const bw = Math.max(1, settings.bridgeWidth);
     
@@ -183,24 +206,20 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, settings: 
       const by = Math.round(bridge.y);
       if (bx < 0 || bx >= w || by < 0 || by >= h) return;
 
-      // Als we al op een wit vlak klikken, doen we een kleine cirkel als bridge (als markering)
       if (!mask[by][bx]) {
         drawThickLine(mask, bx, by, bx, by, bw, w, h);
         return;
       }
 
-      // Zoek de kortste overspanning over het zwart door het klikpunt
       let minTotalDist = Infinity;
       let bestP1 = [bx, by];
       let bestP2 = [bx, by];
 
-      // Cast 12 hoeken (360 graden / 12 = elke 30 graden) voor hogere precisie
       for (let i = 0; i < 12; i++) {
         const angle = (i * Math.PI) / 12;
         const dx = Math.cos(angle);
         const dy = Math.sin(angle);
 
-        // Straal richting A
         let p1 = [bx, by];
         let d1 = 0;
         while (true) {
@@ -209,10 +228,9 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, settings: 
           if (tx < 0 || tx >= w || ty < 0 || ty >= h) break;
           if (!mask[ty][tx]) { p1 = [tx, ty]; break; }
           d1++;
-          if (d1 > 200) break; // Verhoogde limiet voor grotere overspanningen
+          if (d1 > 200) break;
         }
 
-        // Straal richting B (tegenovergesteld)
         let p2 = [bx, by];
         let d2 = 0;
         while (true) {
@@ -231,15 +249,12 @@ export function postProcessMask(mask: MaskGrid, w: number, h: number, settings: 
           bestP2 = p2;
         }
       }
-
-      // De brug overspant nu de VOLLEDIGE afstand tussen de twee dichtstbijzijnde witte grenzen
       drawThickLine(mask, bestP1[0], bestP1[1], bestP2[0], bestP2[1], bw, w, h);
     });
   }
 
   if (!settings.stencilMode) return;
 
-  // De rest van de automatische stencil logica (onveranderd)
   const NEIGHBORS_4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const NEIGHBORS_8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
