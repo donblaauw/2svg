@@ -112,14 +112,17 @@ function App() {
   }, [processImageFile]);
 
   const handleAiEdit = async (prompt: string) => {
-    if (!originalImage || !process.env.API_KEY) {
-      if (!process.env.API_KEY) alert("Geen API Key gevonden. AI functies zijn niet beschikbaar.");
+    const apiKey = process.env.API_KEY;
+    
+    // Explicit narrowing to string for TypeScript safety
+    if (!originalImage || !apiKey || typeof apiKey !== 'string') {
+      if (!apiKey) alert("Geen API Key gevonden. AI functies zijn niet beschikbaar.");
       return;
     }
     
     setIsAiProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       
       const canvas = document.createElement('canvas');
       canvas.width = originalImage.width;
@@ -147,9 +150,10 @@ function App() {
       });
 
       let resultImageBase64 = '';
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
+      const parts = response.candidates?.[0]?.content?.parts;
+      if (parts) {
+        for (const part of parts) {
+          if (part.inlineData?.data) {
             resultImageBase64 = part.inlineData.data;
             break;
           }
@@ -183,7 +187,6 @@ function App() {
 
   const handleManualBridgeToggle = useCallback((x: number, y: number) => {
     setSettings(prev => {
-        // x and y are now in document mm. Threshold is 5mm.
         const threshold = 5;
         const existingIdx = prev.manualBridges.findIndex(b => 
             Math.sqrt(Math.pow(b.x - x, 2) + Math.pow(b.y - y, 2)) < threshold

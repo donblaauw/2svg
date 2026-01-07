@@ -2,7 +2,7 @@
 {
   "name": "pro-bitmap-to-vector-a3",
   "private": true,
-  "version": "2.2.0",
+  "version": "2.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

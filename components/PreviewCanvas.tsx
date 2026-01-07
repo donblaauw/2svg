@@ -278,12 +278,12 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         vectorPaths.forEach(path => ctx.stroke(path));
     }
 
-    // Teken het ACTIEVE gum-pad voor live feedback
+    // Teken het ACTIEVE gum-pad voor live feedback tijdens het slepen
     if (activeErasePath.current && activeErasePath.current.points.length > 0) {
       ctx.beginPath();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)'; // Semi-transparant rood voor live feedback
+      ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)'; 
       ctx.lineWidth = activeErasePath.current.size * 2;
       const pts = activeErasePath.current.points;
       ctx.moveTo(pts[0].x, pts[0].y);
@@ -293,7 +293,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       ctx.stroke();
     }
 
-    // Teken de brush cursor
+    // Brush cursor
     if (settings.activeTool === 'eraser' && mousePos.x >= 0) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
@@ -376,29 +376,42 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     lastMousePos.current = { x: e.clientX, y: e.clientY };
   };
 
-  const handleMouseUp = (e: React.MouseEvent<any> | React.TouchEvent<any>) => {
-    const isTouch = 'changedTouches' in e;
-    const clientX = isTouch ? (e as React.TouchEvent).changedTouches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = isTouch ? (e as React.TouchEvent).changedTouches[0].clientY : (e as React.MouseEvent).clientY;
-
-    if (isDragging.current) {
-      if (settings.activeTool === 'pointer' && startMousePos.current) {
-        const distMoved = Math.sqrt(Math.pow(clientX - startMousePos.current.x, 2) + Math.pow(clientY - startMousePos.current.y, 2));
-        if (distMoved < 4 && onManualBridgeToggle) {
-          const coords = getDocCoords(clientX, clientY);
-          if (coords.x >= 0 && coords.x < docW && coords.y >= 0 && coords.y < docH) {
-            onManualBridgeToggle(coords.x, coords.y);
-          }
-        }
-      } else if (settings.activeTool === 'eraser' && activeErasePath.current && onErasedPathsUpdate) {
-        onErasedPathsUpdate([...settings.erasedPaths, activeErasePath.current]);
-        activeErasePath.current = null;
-      }
+  const finalizeErase = () => {
+    if (isDragging.current && settings.activeTool === 'eraser' && activeErasePath.current && onErasedPathsUpdate) {
+      onErasedPathsUpdate([...settings.erasedPaths, activeErasePath.current]);
     }
     isDragging.current = false; 
     lastMousePos.current = null;
     startMousePos.current = null;
     activeErasePath.current = null;
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (isDragging.current && settings.activeTool === 'pointer' && startMousePos.current) {
+      const distMoved = Math.sqrt(Math.pow(e.clientX - startMousePos.current.x, 2) + Math.pow(e.clientY - startMousePos.current.y, 2));
+      if (distMoved < 4 && onManualBridgeToggle) {
+        const coords = getDocCoords(e.clientX, e.clientY);
+        if (coords.x >= 0 && coords.x < docW && coords.y >= 0 && coords.y < docH) {
+          onManualBridgeToggle(coords.x, coords.y);
+        }
+      }
+    }
+    finalizeErase();
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (isDragging.current && settings.activeTool === 'pointer' && startMousePos.current && e.changedTouches.length > 0) {
+      const clientX = e.changedTouches[0].clientX;
+      const clientY = e.changedTouches[0].clientY;
+      const distMoved = Math.sqrt(Math.pow(clientX - startMousePos.current.x, 2) + Math.pow(clientY - startMousePos.current.y, 2));
+      if (distMoved < 4 && onManualBridgeToggle) {
+        const coords = getDocCoords(clientX, clientY);
+        if (coords.x >= 0 && coords.x < docW && coords.y >= 0 && coords.y < docH) {
+          onManualBridgeToggle(coords.x, coords.y);
+        }
+      }
+    }
+    finalizeErase();
   };
 
   const getTouchDist = (t1: React.Touch, t2: React.Touch) => {
@@ -496,15 +509,10 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={(e) => { 
-          if (isDragging.current && settings.activeTool === 'eraser' && activeErasePath.current && onErasedPathsUpdate) {
-             onErasedPathsUpdate([...settings.erasedPaths, activeErasePath.current]);
-          }
-          isDragging.current = false; lastMousePos.current = null; setMousePos({x:-100,y:-100}); activeErasePath.current = null;
-        }}
+        onMouseLeave={finalizeErase}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
-        onTouchEnd={handleMouseUp}
+        onTouchEnd={handleTouchEnd}
       >
         <canvas ref={canvasRef} className="block w-full h-full" />
       </div>
