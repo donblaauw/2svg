@@ -366,7 +366,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       setTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
     } else if (settings.activeTool === 'eraser' && activeErasePath.current) {
       const coords = getDocCoords(e.clientX, e.clientY);
-      // Voeg alleen punt toe als het ver genoeg van de vorige ligt voor performance
       const lastPt = activeErasePath.current.points[activeErasePath.current.points.length - 1];
       const d = Math.sqrt(Math.pow(coords.x - lastPt.x, 2) + Math.pow(coords.y - lastPt.y, 2));
       if (d > 0.5) {
@@ -377,7 +376,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     lastMousePos.current = { x: e.clientX, y: e.clientY };
   };
 
-  const handleMouseUp = (e: React.MouseEvent | React.TouchEvent) => {
+  const handleMouseUp = (e: React.MouseEvent<any> | React.TouchEvent<any>) => {
     const isTouch = 'changedTouches' in e;
     const clientX = isTouch ? (e as React.TouchEvent).changedTouches[0].clientX : (e as React.MouseEvent).clientX;
     const clientY = isTouch ? (e as React.TouchEvent).changedTouches[0].clientY : (e as React.MouseEvent).clientY;
@@ -399,7 +398,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     isDragging.current = false; 
     lastMousePos.current = null;
     startMousePos.current = null;
-    activeErasePath.current = null; // Zorg dat de preview stopt
+    activeErasePath.current = null;
   };
 
   const getTouchDist = (t1: React.Touch, t2: React.Touch) => {
@@ -497,7 +496,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={() => { 
+        onMouseLeave={(e) => { 
           if (isDragging.current && settings.activeTool === 'eraser' && activeErasePath.current && onErasedPathsUpdate) {
              onErasedPathsUpdate([...settings.erasedPaths, activeErasePath.current]);
           }
