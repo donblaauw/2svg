@@ -53,6 +53,79 @@ export function smoothContour(points: number[][], iterations = 1): number[][] {
   return pts;
 }
 
+/**
+ * Generates a high-resolution list of points that follows the cubic Bezier curves
+ * calculated from the input points. This ensures DXF output matches the SVG preview.
+ */
+export function getSmoothedContourPoints(points: number[][], maxPoints = 2000, vectorSmoothing = 0): number[][] {
+  if (!points || points.length < 3) return points;
+  let processed = points;
+  
+  // Phase 1: Basic Smoothing (Chaikin) - matches buildBezierPath
+  if (vectorSmoothing > 0) processed = smoothContour(points, 1);
+  
+  // Phase 2: Simplification - matches buildBezierPath
+  const epsilon = vectorSmoothing === 0 ? 0.4 : 0.8 + Math.pow(vectorSmoothing, 1.5) * 0.4;
+  processed = simplifyPolyline(processed, epsilon);
+  
+  // Phase 3: Decimation - matches buildBezierPath
+  if (processed.length > maxPoints) {
+      const step = Math.ceil(processed.length / maxPoints);
+      processed = processed.filter((_, i) => i % step === 0);
+  }
+  
+  if (processed.length < 3) return processed;
+
+  const interpolatedPoints: number[][] = [];
+  const L = processed.length;
+  // Use the same baseAlpha logic as buildBezierPath
+  const baseAlpha = vectorSmoothing === 0 ? 0 : 0.12 + (vectorSmoothing * 0.02);
+
+  // Helper for cubic bezier calculation
+  const cubicBezier = (p0: number[], cp1: number[], cp2: number[], p3: number[], t: number) => {
+    const mt = 1 - t;
+    const mt2 = mt * mt;
+    const mt3 = mt2 * mt;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return [
+      mt3 * p0[0] + 3 * mt2 * t * cp1[0] + 3 * mt * t2 * cp2[0] + t3 * p3[0],
+      mt3 * p0[1] + 3 * mt2 * t * cp1[1] + 3 * mt * t2 * cp2[1] + t3 * p3[1]
+    ];
+  };
+
+  for (let i = 0; i < L; i++) {
+    const p0 = processed[(i - 1 + L) % L];
+    const p1 = processed[i];
+    const p2 = processed[(i + 1) % L];
+    const p3 = processed[(i + 2) % L];
+
+    const dist12 = dist(p1, p2);
+    const tan1 = norm(sub(p2, p0));
+    const tan2 = norm(sub(p3, p1));
+
+    const cp1 = [
+        p1[0] + tan1[0] * dist12 * baseAlpha,
+        p1[1] + tan1[1] * dist12 * baseAlpha
+    ];
+    const cp2 = [
+        p2[0] - tan2[0] * dist12 * baseAlpha,
+        p2[1] - tan2[1] * dist12 * baseAlpha
+    ];
+
+    // Sampling resolution: ~0.5mm per segment for smooth curves in DXF
+    const resolution = 0.5;
+    const segments = Math.max(2, Math.ceil(dist12 / resolution));
+
+    for (let j = 0; j < segments; j++) {
+        const t = j / segments;
+        interpolatedPoints.push(cubicBezier(p1, cp1, cp2, p2, t));
+    }
+  }
+  
+  return interpolatedPoints;
+}
+
 export function buildBezierPath(points: number[][], maxPoints = 2000, vectorSmoothing = 0): string {
   if (!points || points.length < 3) return "";
   let processed = points;

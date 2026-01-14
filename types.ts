@@ -9,7 +9,7 @@ export interface AppSettings {
   bezierMode: boolean;
   bridgeWidth: number;
   bridgeCount: number; // Target number of bridges for stability
-  makerName: string;
+  designName: string;
   orientation: 'portrait' | 'landscape';
   manualBridges: { x: number; y: number }[];
   activeTool: 'pointer' | 'eraser';

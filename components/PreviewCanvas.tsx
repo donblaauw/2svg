@@ -38,7 +38,9 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const currentMaskRef = useRef<MaskGrid | null>(null);
   const vectorTimeoutRef = useRef<number | null>(null);
   
-  const [processing, setProcessing] = useState(false);
+  const [processing, setProcessing] = useState(false); // For vectorization
+  const [isMaskProcessing, setIsMaskProcessing] = useState(false); // For bitmap operations
+
   const [vectorPaths, setVectorPaths] = useState<Path2D[]>([]);
   const [previewMask, setPreviewMask] = useState<ImageData | null>(null);
 
@@ -99,91 +101,103 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   useEffect(() => {
     let active = true;
 
-    const processMask = async () => {
-      if (!originalImage) {
-        setPreviewMask(null);
-        currentMaskRef.current = null;
-        return;
-      }
-      
-      try {
-        const internalScale = settings.scale / 100;
-        const internalW = Math.max(20, Math.round(docW * internalScale));
-        const internalH = Math.max(20, Math.round(docH * internalScale));
-        
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = internalW;
-        tempCanvas.height = internalH;
-        const tctx = tempCanvas.getContext('2d', { willReadFrequently: true });
-        if (!tctx) return;
+    // Start loading cursor immediately
+    setIsMaskProcessing(true);
 
-        const fitScale = Math.min((docW * (settings.imageSize / 100)) / originalImage.width, (docH * (settings.imageSize / 100)) / originalImage.height);
-        const finalW = originalImage.width * fitScale;
-        const finalH = originalImage.height * fitScale;
-        
-        const docCanvas = document.createElement('canvas');
-        docCanvas.width = docW;
-        docCanvas.height = docH;
-        const docCtx = docCanvas.getContext('2d');
-        if (!docCtx) return;
-        
-        docCtx.fillStyle = '#ffffff';
-        docCtx.fillRect(0, 0, docW, docH);
-        docCtx.drawImage(originalImage, (docW - finalW)/2, (docH - finalH)/2, finalW, finalH);
-        
-        tctx.drawImage(docCanvas, 0, 0, internalW, internalH);
-        const imgData = tctx.getImageData(0, 0, internalW, internalH);
-        const data = imgData.data;
-        const thresh = settings.threshold;
-        
-        const bwMask: MaskGrid = new Array(internalH);
-        for (let y = 0; y < internalH; y++) {
-          bwMask[y] = new Array(internalW);
-          for (let x = 0; x < internalW; x++) {
-            const idx = (y * internalW + x) * 4;
-            const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-            bwMask[y][x] = lum < thresh;
-          }
-        }
-
-        const docToMask = internalW / docW;
-        postProcessMask(bwMask, internalW, internalH, { 
-          stencilMode: settings.stencilMode, 
-          bridgeWidth: settings.bridgeWidth * docToMask,
-          bridgeCount: settings.bridgeCount,
-          manualBridges: settings.manualBridges.map(b => ({ x: b.x * docToMask, y: b.y * docToMask })),
-          erasedPaths: settings.erasedPaths.map(p => ({
-            points: p.points.map(pt => ({ x: pt.x * docToMask, y: pt.y * docToMask })),
-            size: p.size * docToMask
-          }))
-        });
-        
-        if (settings.smooth > 0) smoothMask(bwMask, internalW, internalH, settings.smooth);
-
+    // Use setTimeout to allow the UI to render the cursor change before blocking on heavy computation
+    const timer = setTimeout(() => {
         if (!active) return;
         
-        currentMaskRef.current = bwMask;
-        onMaskReady(bwMask);
-
-        const previewData = new ImageData(internalW, internalH);
-        for (let y = 0; y < internalH; y++) {
-          for (let x = 0; x < internalW; x++) {
-            const idx = (y * internalW + x) * 4;
-            const val = bwMask[y][x] ? 0 : 255;
-            previewData.data[idx] = val;
-            previewData.data[idx+1] = val;
-            previewData.data[idx+2] = val;
-            previewData.data[idx+3] = 255;
+        const processMask = () => {
+          if (!originalImage) {
+            setPreviewMask(null);
+            currentMaskRef.current = null;
+            setIsMaskProcessing(false);
+            return;
           }
-        }
-        setPreviewMask(previewData);
-      } catch (err) {
-        console.error("Mask process error:", err);
-      }
-    };
+          
+          try {
+            const internalScale = settings.scale / 100;
+            const internalW = Math.max(20, Math.round(docW * internalScale));
+            const internalH = Math.max(20, Math.round(docH * internalScale));
+            
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = internalW;
+            tempCanvas.height = internalH;
+            const tctx = tempCanvas.getContext('2d', { willReadFrequently: true });
+            if (!tctx) return;
 
-    processMask();
-    return () => { active = false; };
+            const fitScale = Math.min((docW * (settings.imageSize / 100)) / originalImage.width, (docH * (settings.imageSize / 100)) / originalImage.height);
+            const finalW = originalImage.width * fitScale;
+            const finalH = originalImage.height * fitScale;
+            
+            const docCanvas = document.createElement('canvas');
+            docCanvas.width = docW;
+            docCanvas.height = docH;
+            const docCtx = docCanvas.getContext('2d');
+            if (!docCtx) return;
+            
+            docCtx.fillStyle = '#ffffff';
+            docCtx.fillRect(0, 0, docW, docH);
+            docCtx.drawImage(originalImage, (docW - finalW)/2, (docH - finalH)/2, finalW, finalH);
+            
+            tctx.drawImage(docCanvas, 0, 0, internalW, internalH);
+            const imgData = tctx.getImageData(0, 0, internalW, internalH);
+            const data = imgData.data;
+            const thresh = settings.threshold;
+            
+            const bwMask: MaskGrid = new Array(internalH);
+            for (let y = 0; y < internalH; y++) {
+              bwMask[y] = new Array(internalW);
+              for (let x = 0; x < internalW; x++) {
+                const idx = (y * internalW + x) * 4;
+                const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                bwMask[y][x] = lum < thresh;
+              }
+            }
+
+            const docToMask = internalW / docW;
+            postProcessMask(bwMask, internalW, internalH, { 
+              stencilMode: settings.stencilMode, 
+              bridgeWidth: settings.bridgeWidth * docToMask,
+              bridgeCount: settings.bridgeCount,
+              manualBridges: settings.manualBridges.map(b => ({ x: b.x * docToMask, y: b.y * docToMask })),
+              erasedPaths: settings.erasedPaths.map(p => ({
+                points: p.points.map(pt => ({ x: pt.x * docToMask, y: pt.y * docToMask })),
+                size: p.size * docToMask
+              }))
+            });
+            
+            if (settings.smooth > 0) smoothMask(bwMask, internalW, internalH, settings.smooth);
+
+            if (!active) return;
+            
+            currentMaskRef.current = bwMask;
+            onMaskReady(bwMask);
+
+            const previewData = new ImageData(internalW, internalH);
+            for (let y = 0; y < internalH; y++) {
+              for (let x = 0; x < internalW; x++) {
+                const idx = (y * internalW + x) * 4;
+                const val = bwMask[y][x] ? 0 : 255;
+                previewData.data[idx] = val;
+                previewData.data[idx+1] = val;
+                previewData.data[idx+2] = val;
+                previewData.data[idx+3] = 255;
+              }
+            }
+            setPreviewMask(previewData);
+          } catch (err) {
+            console.error("Mask process error:", err);
+          } finally {
+            if (active) setIsMaskProcessing(false);
+          }
+        };
+
+        processMask();
+    }, 50); // Increased to 50ms to ensure cursor paint
+
+    return () => { active = false; clearTimeout(timer); };
   }, [originalImage, settings.threshold, settings.scale, settings.imageSize, settings.smooth, settings.stencilMode, settings.bridgeWidth, settings.bridgeCount, settings.manualBridges, settings.erasedPaths, docW, docH]);
 
   // FASE 2: ZWARE VECTORISATIE (DEBOUNCED)
@@ -294,7 +308,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
     }
 
     // Brush cursor
-    if (settings.activeTool === 'eraser' && mousePos.x >= 0) {
+    if (settings.activeTool === 'eraser' && mousePos.x >= 0 && !processing && !isMaskProcessing) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
       ctx.beginPath();
@@ -304,7 +318,7 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
-  }, [originalImage, vectorPaths, transform, settings.bezierMode, settings.activeTool, settings.brushSize, mousePos, canvasSize, docW, docH]);
+  }, [originalImage, vectorPaths, transform, settings.bezierMode, settings.activeTool, settings.brushSize, mousePos, canvasSize, docW, docH, processing, isMaskProcessing]);
 
   useEffect(() => {
     const animId = requestAnimationFrame(draw);
@@ -378,7 +392,11 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
 
   const finalizeErase = () => {
     if (isDragging.current && settings.activeTool === 'eraser' && activeErasePath.current && onErasedPathsUpdate) {
-      onErasedPathsUpdate([...settings.erasedPaths, activeErasePath.current]);
+      setIsMaskProcessing(true);
+      const newPaths = [...settings.erasedPaths, activeErasePath.current];
+      setTimeout(() => {
+        onErasedPathsUpdate(newPaths);
+      }, 10);
     }
     isDragging.current = false; 
     lastMousePos.current = null;
@@ -392,7 +410,10 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       if (distMoved < 4 && onManualBridgeToggle) {
         const coords = getDocCoords(e.clientX, e.clientY);
         if (coords.x >= 0 && coords.x < docW && coords.y >= 0 && coords.y < docH) {
-          onManualBridgeToggle(coords.x, coords.y);
+           setIsMaskProcessing(true);
+           setTimeout(() => {
+             onManualBridgeToggle(coords.x, coords.y);
+           }, 10);
         }
       }
     }
@@ -407,7 +428,10 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
       if (distMoved < 4 && onManualBridgeToggle) {
         const coords = getDocCoords(clientX, clientY);
         if (coords.x >= 0 && coords.x < docW && coords.y >= 0 && coords.y < docH) {
-          onManualBridgeToggle(coords.x, coords.y);
+           setIsMaskProcessing(true);
+           setTimeout(() => {
+             onManualBridgeToggle(coords.x, coords.y);
+           }, 10);
         }
       }
     }
@@ -499,12 +523,17 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
   const updateBrushSize = (val: number) => {
     onSettingsChange({ ...settings, brushSize: val });
   };
+  
+  // Determine global cursor state for this component
+  const cursorClass = (processing || isMaskProcessing) 
+    ? 'cursor-wait' 
+    : (settings.activeTool === 'eraser' ? 'cursor-none' : 'cursor-crosshair');
 
   return (
     <div className="relative w-full h-full bg-neutral-900 overflow-hidden select-none touch-none group">
       <div 
         ref={containerRef}
-        className={`w-full h-full touch-none ${settings.activeTool === 'eraser' ? 'cursor-none' : 'cursor-crosshair'}`}
+        className={`w-full h-full touch-none ${cursorClass}`}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -578,23 +607,6 @@ const PreviewCanvas: React.FC<PreviewCanvasProps> = ({
               <span className="text-[10px] font-mono text-neutral-400">{settings.brushSize}</span>
            </div>
          )}
-      </div>
-
-      <div className="absolute bottom-6 right-6 flex flex-col gap-2 pointer-events-none">
-          <div className="bg-neutral-800/90 backdrop-blur-md border border-neutral-700 rounded-lg shadow-xl p-1.5 flex flex-col gap-1 pointer-events-auto">
-             {onToggleViewMode && (
-                <button 
-                    onClick={onToggleViewMode} 
-                    className={`p-2 rounded transition-colors ${!settings.bezierMode ? 'bg-blue-600 text-white' : 'hover:bg-neutral-700 text-neutral-300 hover:text-white'}`} 
-                >
-                    {settings.bezierMode ? <ScanLine size={20} /> : <ImageIcon size={20} />}
-                </button>
-             )}
-             <div className="h-px bg-neutral-700 mx-1 my-0.5" />
-             <button onClick={() => zoomFromCenter(1.2)} className="p-2 hover:bg-neutral-700 rounded text-neutral-300"><ZoomIn size={20} /></button>
-             <button onClick={() => zoomFromCenter(1 / 1.2)} className="p-2 hover:bg-neutral-700 rounded text-neutral-300"><ZoomOut size={20} /></button>
-             <button onClick={fitToScreen} className="p-2 hover:bg-neutral-700 rounded text-neutral-300"><Maximize size={20} /></button>
-          </div>
       </div>
 
       {processing && (

@@ -89,13 +89,13 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
           </div>
 
           <div>
-            <label className="block mb-1 text-[9px] md:text-xs font-semibold text-neutral-400 uppercase tracking-wider">Naam Maker</label>
+            <label className="block mb-1 text-[9px] md:text-xs font-semibold text-neutral-400 uppercase tracking-wider">Naam Ontwerp</label>
             <input
               type="text"
               className="bg-neutral-900 border border-neutral-600 text-neutral-100 text-xs md:text-sm rounded-md focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 block w-full p-1.5 md:p-2.5 placeholder-neutral-600 transition-all"
-              placeholder="Vereist..."
-              value={settings.makerName}
-              onChange={(e) => update('makerName', e.target.value)}
+              placeholder="Naam van je ontwerp..."
+              value={settings.designName}
+              onChange={(e) => update('designName', e.target.value)}
             />
           </div>
         </div>

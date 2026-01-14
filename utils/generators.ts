@@ -1,7 +1,7 @@
 
 import { getA3Dimensions } from '../constants';
 import { MaskGrid, AppSettings } from '../types';
-import { extractAllContours, buildBezierPath, smoothContour, simplifyPolyline } from './processing';
+import { extractAllContours, buildBezierPath, smoothContour, simplifyPolyline, getSmoothedContourPoints } from './processing';
 
 export function simplifyPoints(points: number[][], maxPoints = 8000): number[][] {
   if (!points || points.length === 0) return [];
@@ -44,7 +44,8 @@ export function buildDxfFromMask(mask: MaskGrid, settings: AppSettings): string 
   const { width: docW, height: docH } = getA3Dimensions(settings.orientation);
   const internalH = mask.length;
   const internalW = mask[0].length;
-  const vectorSmoothing = settings.vectorSmoothing ?? 0;
+  // Enforce minimum smoothing of 0.5 to match SVG/Preview behavior
+  const vectorSmoothing = Math.max(settings.vectorSmoothing ?? 0, 0.5);
 
   const contours = extractAllContours(mask, internalW, internalH, docW, docH);
   if (!contours.length) return '';
@@ -66,18 +67,8 @@ ENTITIES
 `;
 
   for (const contour of contours) {
-    let processed = contour;
-    if (vectorSmoothing > 0) {
-       const epsilon = 0.5 + (vectorSmoothing * 0.2);
-       processed = simplifyPolyline(processed, epsilon);
-    }
-
-    const iterations = Math.ceil(vectorSmoothing / 2); 
-    if (iterations > 0) {
-      processed = smoothContour(processed, iterations);
-    }
-    
-    const pts = simplifyPoints(processed, 8000);
+    // Use the interpolated points from Bezier calculation to match preview
+    const pts = getSmoothedContourPoints(contour, 8000, vectorSmoothing);
     
     if (pts.length < 2) continue;
 

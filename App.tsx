@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   bezierMode: false,
   bridgeWidth: 2,
   bridgeCount: 2,
-  makerName: '',
+  designName: '',
   orientation: 'portrait',
   manualBridges: [],
   activeTool: 'pointer',
@@ -208,9 +208,8 @@ function App() {
   }, [pushHistory]);
 
   const getCleanFilename = (ext: string) => {
-    const cleanName = settings.makerName.trim().replace(/[^a-zA-Z0-9_-]/g, '_') || 'export';
-    const orientLabel = settings.orientation === 'landscape' ? '_L' : '_P';
-    return `${cleanName}${orientLabel}.${ext}`;
+    const baseName = settings.designName.trim() || 'ontwerp';
+    return `${baseName}.${ext}`;
   };
 
   const saveFile = async (blob: Blob, filename: string, type: 'svg' | 'dxf') => {
@@ -260,12 +259,12 @@ function App() {
     await saveFile(blob, getCleanFilename('dxf'), 'dxf');
   };
 
-  const canDownload = hasMask && settings.makerName.trim().length > 0;
+  const canDownload = hasMask && settings.designName.trim().length > 0;
   const { width: docW, height: docH } = getA3Dimensions(settings.orientation);
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-neutral-900 overflow-hidden">
-      <header className="px-4 py-3 md:px-6 md:py-4 bg-neutral-900 border-b border-neutral-800 shrink-0 z-20">
+    <div className={`flex flex-col h-[100dvh] bg-neutral-900 overflow-hidden ${isAiProcessing ? 'cursor-wait' : ''}`}>
+      <header className="px-4 py-3 md:px-6 md:py-4 bg-neutral-900 border-b border-neutral-700/50 shrink-0 z-20">
         <div className="max-w-[1800px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-1.5 md:p-2 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg shadow-lg">
